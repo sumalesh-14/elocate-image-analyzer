@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # API Keys
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_API_KEYS: Optional[str] = None
+    OPENAI_API_KEYS: Optional[str] = None
+    GROQ_API_KEYS: Optional[str] = None
     API_KEY: str
     
     # CORS Configuration
@@ -69,6 +72,29 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> List[str]:
         """Parse ALLOWED_ORIGINS comma-separated string into list."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
+    
+    @property
+    def gemini_api_keys_list(self) -> List[str]:
+        """Parse GEMINI_API_KEYS into list, falling back to GEMINI_API_KEY if not set."""
+        if self.GEMINI_API_KEYS:
+            return [key.strip() for key in self.GEMINI_API_KEYS.split(",") if key.strip()]
+        if self.GEMINI_API_KEY:
+            return [self.GEMINI_API_KEY]
+        return []
+        
+    @property
+    def openai_api_keys_list(self) -> List[str]:
+        """Parse OPENAI_API_KEYS into list."""
+        if self.OPENAI_API_KEYS:
+            return [key.strip() for key in self.OPENAI_API_KEYS.split(",") if key.strip()]
+        return []
+        
+    @property
+    def groq_api_keys_list(self) -> List[str]:
+        """Parse GROQ_API_KEYS into list."""
+        if self.GROQ_API_KEYS:
+            return [key.strip() for key in self.GROQ_API_KEYS.split(",") if key.strip()]
+        return []
     
     @property
     def database_url(self) -> str:

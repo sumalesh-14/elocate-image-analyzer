@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 
 from app.models.response import IdentificationResponse, ErrorData, HealthResponse, DeviceData
 from app.services.analyzer import analyzer_service, AnalysisError
-from app.services.gemini_service import gemini_service
+from app.services.llm_router import llm_service
 from app.api.middleware import limiter
 
 
@@ -174,17 +174,16 @@ async def health_check() -> HealthResponse:
         HealthResponse with service status and Gemini API availability
     """
     try:
-        # Check Gemini API availability
-        gemini_available = await gemini_service.check_availability()
+        llm_available = await llm_service.check_availability()
         
         # Check database availability
         from app.services.db_connection import db_manager
         database_available = await db_manager.health_check()
         
         # Determine overall status
-        if gemini_available and database_available:
+        if llm_available and database_available:
             service_status = "healthy"
-        elif gemini_available or database_available:
+        elif llm_available or database_available:
             service_status = "degraded"
         else:
             service_status = "unhealthy"
@@ -193,14 +192,14 @@ async def health_check() -> HealthResponse:
             "Health check performed",
             extra={
                 "status": service_status,
-                "gemini_available": gemini_available,
+                "gemini_available": llm_available,
                 "database_available": database_available
             }
         )
         
         return HealthResponse(
             status=service_status,
-            gemini_api_available=gemini_available,
+            gemini_api_available=llm_available,
             database_available=database_available
         )
         

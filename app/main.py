@@ -172,10 +172,11 @@ async def startup_event():
     """
     logger.info("Starting Image Device Identification Service")
     
-    # Validate Gemini API key is set
-    if not settings.GEMINI_API_KEY:
-        logger.error("GEMINI_API_KEY environment variable is not set")
-        raise ValueError("GEMINI_API_KEY is required")
+    # Validate LLM API keys are set
+    has_keys = bool(settings.gemini_api_keys_list) or bool(settings.openai_api_keys_list) or bool(settings.groq_api_keys_list)
+    if not has_keys:
+        logger.error("No LLM API keys are configured")
+        raise ValueError("At least one LLM API key must be configured in GEMINI_API_KEYS, OPENAI_API_KEYS, or GROQ_API_KEYS")
     
     # Validate API key is set
     if not settings.API_KEY:
@@ -198,18 +199,18 @@ async def startup_event():
         )
         logger.warning("Service will continue without database matching")
     
-    # Validate Gemini API connectivity
+    # Validate LLM API connectivity
     try:
-        from app.services.gemini_service import gemini_service
-        is_available = await gemini_service.check_availability()
+        from app.services.llm_router import llm_service
+        is_available = await llm_service.check_availability()
         
         if is_available:
-            logger.info("Gemini API connectivity verified")
+            logger.info("LLM Router API connectivity verified")
         else:
-            logger.warning("Gemini API is not accessible - service will start but may fail on requests")
+            logger.warning("No LLM APIs are accessible - service will start but may fail on requests")
     except Exception as e:
         logger.warning(
-            f"Could not verify Gemini API connectivity: {str(e)}",
+            f"Could not verify LLM connectivity: {str(e)}",
             extra={"error": str(e)}
         )
     

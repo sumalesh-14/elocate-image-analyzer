@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: elocate-image-analyzer
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: MAX_FILE_SIZE_MB
+        value: 10
+      - key: LOG_LEVEL
+        value: INFO
+      - key: REQUEST_TIMEOUT
+        value: 30
+      - key: RATE_LIMIT
+        value: 10/minute

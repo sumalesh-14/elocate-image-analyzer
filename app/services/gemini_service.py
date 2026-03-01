@@ -1,16 +1,17 @@
 """
 Gemini Vision API integration service.
 Handles communication with Google's Gemini Vision API for device image analysis.
+Uses the new google-genai SDK (replaces the deprecated google-generativeai).
 """
 
 import logging
 import json
 import io
-import time
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from PIL import Image
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import settings
 
@@ -70,16 +71,6 @@ IMPORTANT RULES FOR SEVERITY ASSESSMENT:
 - Devices with both batteries and circuit boards should be "high" severity minimum
 - Simple accessories without batteries or hazardous materials can be "low" or "medium"
 
-SEVERITY EXAMPLES:
-- Smartphone: "high" or "critical" (lithium battery + fire risk)
-- Laptop: "high" or "critical" (lithium battery + precious metals)
-- Tablet: "high" (lithium battery)
-- CRT Monitor/TV: "critical" (lead, mercury, implosion risk)
-- Power bank: "high" or "critical" (large lithium battery)
-- USB cable: "low" (minimal risk)
-- Charger without battery: "medium" (electronic components)
-- Battery (standalone): "high" or "critical" (fire/chemical risk)
-
 Return ONLY valid JSON in this exact format:
 {
   "category": "string",
@@ -105,260 +96,180 @@ class GeminiAPIError(Exception):
 
 class GeminiService:
     """Service for interacting with Google's Gemini Vision API."""
-    
+
     def __init__(self):
-        """Initialize the Gemini API client."""
+        """Initialize the Gemini API client using the new google-genai SDK."""
         try:
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            
-            # Try to list available models to pick the best supported one
-            try:
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                logger.info(f"Available Gemini models: {available_models}")
-                
-                if 'models/gemini-1.5-flash' in available_models:
-                    self.model_name = 'gemini-1.5-flash'
-                elif 'models/gemini-1.5-flash-latest' in available_models:
-                    self.model_name = 'gemini-1.5-flash-latest'
-                elif 'models/gemini-pro-vision' in available_models:
-                    self.model_name = 'gemini-pro-vision'
-                else:
-                    # Fallback to 1.5-flash if listing fails or none of the above are found
-                    self.model_name = 'gemini-1.5-flash'
-            except Exception as list_err:
-                logger.warning(f"Could not list models: {str(list_err)}. Defaulting to gemini-1.5-flash")
-                self.model_name = 'gemini-1.5-flash'
-            
-            logger.info(f"Using Gemini model: {self.model_name}")
-            self.model = genai.GenerativeModel(self.model_name)
+            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            self.model_name = 'gemini-2.5-flash'
+            logger.info(f"GeminiService initialized with model: {self.model_name}")
         except Exception as e:
             raise GeminiAPIError(f"Failed to initialize Gemini API: {str(e)}")
-    
+
     async def analyze_device_image(
-        self, 
+        self,
         image_bytes: bytes,
         max_retries: int = 3
     ) -> Dict[str, Any]:
         """
         Analyze a device image using Gemini Vision API.
-        
+
         Args:
             image_bytes: Raw image bytes
             max_retries: Maximum number of retry attempts for transient failures
-            
+
         Returns:
             Dictionary containing device attributes extracted from the image
-            
+
         Raises:
             GeminiAPIError: If API is unavailable or returns invalid response
             TimeoutError: If API call exceeds timeout
             ValueError: If response is not valid JSON
         """
         last_error = None
-        
+
         for attempt in range(max_retries):
             try:
                 # Convert bytes to PIL Image
                 image = Image.open(io.BytesIO(image_bytes))
-                
+
                 # Generate content with Gemini (with timeout)
                 response = await asyncio.wait_for(
                     self._generate_content(image),
                     timeout=settings.REQUEST_TIMEOUT
                 )
-                
+
                 # Parse JSON response
                 result = self._parse_response(response.text)
-                
+
                 # Validate the response structure
                 self._validate_response(result)
-                
+
                 return result
-                
+
             except asyncio.TimeoutError:
                 raise TimeoutError(f"Gemini API request timed out after {settings.REQUEST_TIMEOUT} seconds")
-            
+
             except json.JSONDecodeError as e:
                 last_error = ValueError(f"Gemini returned invalid JSON: {str(e)}")
-                # Retry on JSON decode errors (might be transient)
                 if attempt < max_retries - 1:
                     await self._exponential_backoff(attempt)
                     continue
                 raise last_error
-            
+
             except Exception as e:
-                # Check if it's a transient error that should be retried
                 if self._is_transient_error(e):
                     last_error = e
                     if attempt < max_retries - 1:
                         await self._exponential_backoff(attempt)
                         continue
-                
-                # Non-transient error, raise immediately
+
                 raise GeminiAPIError(f"Gemini API error: {str(e)}")
-        
-        # If we exhausted all retries
+
         if last_error:
             raise GeminiAPIError(f"Gemini API failed after {max_retries} attempts: {str(last_error)}")
-    
+
     async def _generate_content(self, image: Image.Image):
         """
-        Generate content using Gemini API (async wrapper).
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Gemini API response
+        Generate content using new Gemini API SDK (async wrapper).
         """
-        # Run the synchronous API call in a thread pool
         loop = asyncio.get_event_loop()
+
+        # Convert PIL Image to bytes for the new SDK
+        img_bytes = io.BytesIO()
+        fmt = image.format if image.format else 'JPEG'
+        image.save(img_bytes, format=fmt)
+        img_bytes.seek(0)
+        raw_bytes = img_bytes.read()
+        mime = f"image/{fmt.lower()}"
+
         response = await loop.run_in_executor(
             None,
-            lambda: self.model.generate_content([DEVICE_ANALYSIS_PROMPT, image])
+            lambda: self.client.models.generate_content(
+                model=self.model_name,
+                contents=[
+                    types.Part.from_bytes(data=raw_bytes, mime_type=mime),
+                    DEVICE_ANALYSIS_PROMPT,
+                ]
+            )
         )
         return response
-    
+
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
-        """
-        Parse Gemini response text into JSON.
-        
-        Args:
-            response_text: Raw response text from Gemini
-            
-        Returns:
-            Parsed JSON dictionary
-            
-        Raises:
-            json.JSONDecodeError: If response is not valid JSON
-        """
-        # Try to extract JSON from response (Gemini might include markdown)
+        """Parse Gemini response text into JSON."""
         text = response_text.strip()
-        
-        # Remove markdown code blocks if present
+
         if text.startswith("```json"):
-            text = text[7:]  # Remove ```json
+            text = text[7:]
         elif text.startswith("```"):
-            text = text[3:]  # Remove ```
-        
+            text = text[3:]
+
         if text.endswith("```"):
-            text = text[:-3]  # Remove trailing ```
-        
-        text = text.strip()
-        
-        # Parse JSON
-        return json.loads(text)
-    
+            text = text[:-3]
+
+        return json.loads(text.strip())
+
     def _validate_response(self, result: Dict[str, Any]) -> None:
-        """
-        Validate that the response contains required fields.
-        
-        Args:
-            result: Parsed response dictionary
-            
-        Raises:
-            ValueError: If required fields are missing or invalid
-        """
+        """Validate that the response contains required fields."""
         required_fields = [
             'category', 'brand', 'model', 'deviceType', 'confidenceScore', 'attributes',
             'severity', 'contains_precious_metals', 'contains_hazardous_materials'
         ]
-        
+
         for field in required_fields:
             if field not in result:
                 raise ValueError(f"Missing required field in Gemini response: {field}")
-        
-        # Validate confidence score range
+
         confidence = result.get('confidenceScore')
         if not isinstance(confidence, (int, float)) or not (0.0 <= confidence <= 1.0):
             raise ValueError(f"Invalid confidence score: {confidence}. Must be between 0.0 and 1.0")
-        
-        # Validate attributes is a dictionary
+
         if not isinstance(result.get('attributes'), dict):
             raise ValueError("Attributes field must be a dictionary")
-        
-        # Validate severity is one of the allowed values
+
         severity = result.get('severity')
         allowed_severities = ['low', 'medium', 'high', 'critical']
         if severity not in allowed_severities:
             raise ValueError(f"Invalid severity: {severity}. Must be one of {allowed_severities}")
-        
-        # Validate boolean fields
+
         if not isinstance(result.get('contains_precious_metals'), bool):
             raise ValueError("contains_precious_metals must be a boolean")
-        
+
         if not isinstance(result.get('contains_hazardous_materials'), bool):
             raise ValueError("contains_hazardous_materials must be a boolean")
-    
+
     def _is_transient_error(self, error: Exception) -> bool:
-        """
-        Determine if an error is transient and should be retried.
-        
-        Args:
-            error: Exception that occurred
-            
-        Returns:
-            True if error is transient, False otherwise
-        """
+        """Determine if an error is transient and should be retried."""
         error_str = str(error).lower()
-        
-        # Common transient error patterns
         transient_patterns = [
-            'timeout',
-            'connection',
-            'network',
-            'temporary',
-            'unavailable',
-            'rate limit',
-            '429',
-            '500',
-            '502',
-            '503',
-            '504'
+            'timeout', 'connection', 'network', 'temporary',
+            'unavailable', 'rate limit', '429', '500', '502', '503', '504'
         ]
-        
         return any(pattern in error_str for pattern in transient_patterns)
-    
+
     async def _exponential_backoff(self, attempt: int) -> None:
-        """
-        Wait with exponential backoff before retrying.
-        
-        Args:
-            attempt: Current attempt number (0-indexed)
-        """
-        # Exponential backoff: 1s, 2s, 4s, etc.
+        """Wait with exponential backoff before retrying."""
         wait_time = 2 ** attempt
         await asyncio.sleep(wait_time)
-    
+
     async def check_api_availability(self) -> bool:
-        """
-        Check if Gemini API is available.
-        
-        Returns:
-            True if API is available, False otherwise
-        """
+        """Check if Gemini API is available."""
         try:
-            # Try a simple API call with a minimal prompt
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
-                lambda: self.model.generate_content("test")
+                lambda: self.client.models.generate_content(
+                    model=self.model_name,
+                    contents="test"
+                )
             )
             return True
         except Exception as e:
-            # Log the error for debugging
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Gemini API availability check failed: {str(e)}", exc_info=True)
             return False
-    
+
     async def check_availability(self) -> bool:
-        """
-        Check if Gemini API is available (alias for check_api_availability).
-        
-        Returns:
-            True if API is available, False otherwise
-        """
+        """Check if Gemini API is available (alias for check_api_availability)."""
         return await self.check_api_availability()
 
 

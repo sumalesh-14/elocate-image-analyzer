@@ -18,6 +18,7 @@ from app.api.routes import router
 from app.api.middleware import configure_middleware
 from app.utils.logger import configure_logging
 from app.models.response import ErrorData
+from google import genai
 
 
 # Configure logging
@@ -170,7 +171,6 @@ async def startup_event():
     - Database connectivity (optional - service continues if unavailable)
     """
     logger.info("Starting Image Device Identification Service")
-    logger.info(f"Google Generative AI SDK Version: {genai.__version__}")
     
     # Validate Gemini API key is set
     if not settings.GEMINI_API_KEY:

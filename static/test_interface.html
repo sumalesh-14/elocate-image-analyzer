@@ -628,7 +628,7 @@
             const startTime = Date.now();
 
             try {
-                const response = await fetch('http://localhost:8000/api/v1/analyze', {
+                const response = await fetch('/api/v1/analyze', {
                     method: 'POST',
                     body: formData,
                     headers: {

@@ -492,6 +492,16 @@ All documentation has been organized in the [`docs/`](docs/) folder:
 - **[API Quota Guide](docs/GEMINI_API_QUOTA_GUIDE.md)** - Manage Gemini API quota
 - **[Full Documentation Index](docs/README.md)** - Complete documentation list
 
+## 🧪 Testing
+
+All test files are in the [`tests/`](tests/) folder:
+
+- **[Test Documentation](tests/README.md)** - Complete testing guide
+- **Database Tests:** `python tests/test_local_db.py`
+- **API Tests:** `.\tests\test_api.ps1`
+- **Railway Tests:** `.\tests\test_railway_deployment.ps1`
+- **Unit Tests:** `pytest tests/`
+
 ## 🚀 Quick Start
 
 ### Local Development
@@ -514,7 +524,7 @@ All documentation has been organized in the [`docs/`](docs/) folder:
 
 4. **Test the API:**
    - Visit: http://localhost:8000/docs
-   - Or run: `python test_local_db.py`
+   - Or run: `python tests/test_local_db.py`
 
 ### Deploy to Railway
 
@@ -528,7 +538,7 @@ All documentation has been organized in the [`docs/`](docs/) folder:
 
 3. **Test deployment:**
    ```bash
-   .\test_railway_deployment.ps1
+   .\tests\test_railway_deployment.ps1
    ```
 
 See [docs/RAILWAY_DEPLOYMENT_GUIDE.md](docs/RAILWAY_DEPLOYMENT_GUIDE.md) for detailed instructions.

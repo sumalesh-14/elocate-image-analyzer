@@ -47,21 +47,31 @@ class DatabaseConnectionManager:
                 
                 logger.info(f"Attempting to connect to database at {settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}")
                 
+                # Connection parameters for asyncpg
+                conn_params = {
+                    'host': settings.DB_HOST,
+                    'port': settings.DB_PORT,
+                    'database': settings.DB_NAME,
+                    'user': settings.DB_USER,
+                    'password': settings.DB_PASSWORD,
+                    'min_size': 1,
+                    'max_size': settings.DB_MAX_POOL_SIZE,
+                    'timeout': 30,
+                    'command_timeout': settings.DB_QUERY_TIMEOUT / 1000,
+                    'statement_cache_size': 0,  # Required for pgbouncer
+                }
+                
+                # Add SSL if required
+                if settings.DB_SSL_MODE == 'require':
+                    import ssl
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+                    conn_params['ssl'] = ssl_context
+                
                 # Use asyncio.wait_for to enforce timeout
                 self._pool = await asyncio.wait_for(
-                    asyncpg.create_pool(
-                        host=settings.DB_HOST,
-                        port=settings.DB_PORT,
-                        database=settings.DB_NAME,
-                        user=settings.DB_USER,
-                        password=settings.DB_PASSWORD,
-                        min_size=1,  # Start with 1 connection to speed up initialization
-                        max_size=settings.DB_MAX_POOL_SIZE,
-                        timeout=30,  # Pool acquisition timeout
-                        command_timeout=settings.DB_QUERY_TIMEOUT / 1000,  # Convert ms to seconds
-                        ssl='require' if settings.DB_SSL_MODE == 'require' else None,
-                        statement_cache_size=0  # Required for pgbouncer compatibility
-                    ),
+                    asyncpg.create_pool(**conn_params),
                     timeout=30.0  # 30 second timeout for pool creation
                 )
                 

@@ -1,5 +1,5 @@
 """
-Database connection manager for PostgreSQL using asyncpg.
+Database connection manager for PostgreSQL using asyncpg with psycopg2 fallback.
 Manages connection pool lifecycle, health checks, and retry logic.
 """
 
@@ -7,6 +7,8 @@ import asyncio
 import logging
 from typing import Optional
 import asyncpg
+import psycopg2
+from psycopg2 import pool
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -26,12 +28,15 @@ class DatabaseConnectionManager:
     def __init__(self):
         """Initialize the connection manager."""
         self._pool: Optional[asyncpg.Pool] = None
+        self._psycopg_pool: Optional[pool.ThreadedConnectionPool] = None
+        self._use_psycopg = False
         self._is_available: bool = False
         self._retry_delays = [0.5, 1.0, 2.0]  # 500ms, 1s, 2s
     
     async def initialize(self) -> None:
         """
         Initialize the connection pool with retry logic.
+        Tries asyncpg first, falls back to psycopg2 if network issues occur.
         
         Attempts to establish connection pool with exponential backoff.
         Logs all connection attempts and errors.
@@ -39,6 +44,27 @@ class DatabaseConnectionManager:
         Raises:
             Exception: If all connection attempts fail after retries
         """
+        # First try asyncpg
+        asyncpg_success = await self._try_asyncpg()
+        
+        if asyncpg_success:
+            logger.info("Using asyncpg for database connections")
+            return
+        
+        # If asyncpg fails with network error, try psycopg2
+        logger.info("asyncpg failed, trying psycopg2 as fallback")
+        psycopg_success = await self._try_psycopg()
+        
+        if psycopg_success:
+            logger.info("Using psycopg2 for database connections")
+            return
+        
+        # Both failed
+        self._is_available = False
+        logger.error("All database connection methods exhausted. Service will operate without database matching.")
+    
+    async def _try_asyncpg(self) -> bool:
+        """Try to connect using asyncpg."""
         for attempt, delay in enumerate(self._retry_delays, start=1):
             try:
                 if attempt > 1:
@@ -80,28 +106,71 @@ class DatabaseConnectionManager:
                     await conn.fetchval("SELECT 1")
                 
                 self._is_available = True
-                logger.info(f"Database connection pool initialized successfully (min=1, max={settings.DB_MAX_POOL_SIZE})")
-                return
+                self._use_psycopg = False
+                logger.info(f"asyncpg connection pool initialized successfully (min=1, max={settings.DB_MAX_POOL_SIZE})")
+                return True
                 
             except asyncio.TimeoutError:
-                logger.error(f"Database connection attempt {attempt} failed: Connection timeout after 30 seconds")
+                logger.error(f"asyncpg connection attempt {attempt} failed: Connection timeout after 30 seconds")
                 
                 if attempt == len(self._retry_delays):
-                    # All retries exhausted
-                    self._is_available = False
-                    logger.error("All database connection retries exhausted. Service will operate without database matching.")
-                    # Don't raise - allow service to start without database
-                    return
+                    return False
                     
             except (asyncpg.PostgresConnectionError, asyncpg.PostgresError, OSError) as e:
-                logger.error(f"Database connection attempt {attempt} failed: {type(e).__name__}: {str(e)}")
+                logger.error(f"asyncpg connection attempt {attempt} failed: {type(e).__name__}: {str(e)}")
+                
+                # If it's a network error, don't retry asyncpg
+                if isinstance(e, OSError) and e.errno == 101:
+                    logger.warning("Network unreachable error detected, will try psycopg2 fallback")
+                    return False
                 
                 if attempt == len(self._retry_delays):
-                    # All retries exhausted
-                    self._is_available = False
-                    logger.error("All database connection retries exhausted. Service will operate without database matching.")
-                    # Don't raise - allow service to start without database
-                    return
+                    return False
+        
+        return False
+    
+    async def _try_psycopg(self) -> bool:
+        """Try to connect using psycopg2 (sync driver with thread pool)."""
+        try:
+            logger.info(f"Attempting psycopg2 connection to {settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}")
+            
+            # Build connection string
+            conn_string = f"host={settings.DB_HOST} port={settings.DB_PORT} dbname={settings.DB_NAME} user={settings.DB_USER} password={settings.DB_PASSWORD}"
+            
+            if settings.DB_SSL_MODE == 'require':
+                conn_string += " sslmode=require"
+            
+            # Create threaded connection pool
+            self._psycopg_pool = pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=settings.DB_MAX_POOL_SIZE,
+                dsn=conn_string
+            )
+            
+            # Test the connection
+            conn = self._psycopg_pool.getconn()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                result = cursor.fetchone()
+                cursor.close()
+                
+                if result[0] == 1:
+                    self._is_available = True
+                    self._use_psycopg = True
+                    logger.info(f"psycopg2 connection pool initialized successfully (min=1, max={settings.DB_MAX_POOL_SIZE})")
+                    return True
+            finally:
+                self._psycopg_pool.putconn(conn)
+            
+        except Exception as e:
+            logger.error(f"psycopg2 connection failed: {type(e).__name__}: {str(e)}")
+            if self._psycopg_pool:
+                self._psycopg_pool.closeall()
+                self._psycopg_pool = None
+            return False
+        
+        return False
     
     async def close(self) -> None:
         """
@@ -110,12 +179,22 @@ class DatabaseConnectionManager:
         if self._pool:
             try:
                 await self._pool.close()
-                logger.info("Database connection pool closed successfully")
+                logger.info("asyncpg connection pool closed successfully")
             except Exception as e:
-                logger.error(f"Error closing database connection pool: {e}")
+                logger.error(f"Error closing asyncpg connection pool: {e}")
             finally:
                 self._pool = None
-                self._is_available = False
+        
+        if self._psycopg_pool:
+            try:
+                self._psycopg_pool.closeall()
+                logger.info("psycopg2 connection pool closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing psycopg2 connection pool: {e}")
+            finally:
+                self._psycopg_pool = None
+        
+        self._is_available = False
     
     async def get_connection(self) -> asyncpg.Connection:
         """

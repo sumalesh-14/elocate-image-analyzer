@@ -218,13 +218,30 @@ class DatabaseConnectionManager:
         Returns:
             bool: True if database is healthy, False otherwise
         """
-        if not self._pool or not self._is_available:
+        if not self._is_available:
             return False
         
         try:
-            async with self._pool.acquire() as conn:
-                result = await conn.fetchval("SELECT 1")
-                return result == 1
+            # Check asyncpg pool
+            if self._pool and not self._use_psycopg:
+                async with self._pool.acquire() as conn:
+                    result = await conn.fetchval("SELECT 1")
+                    return result == 1
+            
+            # Check psycopg2 pool
+            elif self._psycopg_pool and self._use_psycopg:
+                conn = self._psycopg_pool.getconn()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1")
+                    result = cursor.fetchone()
+                    cursor.close()
+                    return result[0] == 1
+                finally:
+                    self._psycopg_pool.putconn(conn)
+            
+            return False
+            
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
             return False
@@ -236,7 +253,7 @@ class DatabaseConnectionManager:
         Returns:
             bool: True if database is available, False otherwise
         """
-        return self._is_available and self._pool is not None
+        return self._is_available and (self._pool is not None or self._psycopg_pool is not None)
     
     @property
     def pool(self) -> Optional[asyncpg.Pool]:

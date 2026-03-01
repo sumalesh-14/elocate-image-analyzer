@@ -27,7 +27,7 @@ class DatabaseConnectionManager:
         """Initialize the connection manager."""
         self._pool: Optional[asyncpg.Pool] = None
         self._is_available: bool = False
-        self._retry_delays = [0.1, 0.2, 0.4]  # 100ms, 200ms, 400ms
+        self._retry_delays = [0.5, 1.0, 2.0]  # 500ms, 1s, 2s
     
     async def initialize(self) -> None:
         """
@@ -57,12 +57,12 @@ class DatabaseConnectionManager:
                         password=settings.DB_PASSWORD,
                         min_size=1,  # Start with 1 connection to speed up initialization
                         max_size=settings.DB_MAX_POOL_SIZE,
-                        timeout=10,  # Pool acquisition timeout
+                        timeout=30,  # Pool acquisition timeout
                         command_timeout=settings.DB_QUERY_TIMEOUT / 1000,  # Convert ms to seconds
-                        ssl=settings.DB_SSL_MODE if settings.DB_SSL_MODE != "disable" else None,
+                        ssl='require' if settings.DB_SSL_MODE == 'require' else None,
                         statement_cache_size=0  # Required for pgbouncer compatibility
                     ),
-                    timeout=15.0  # 15 second timeout for pool creation
+                    timeout=30.0  # 30 second timeout for pool creation
                 )
                 
                 # Test the connection
@@ -74,7 +74,7 @@ class DatabaseConnectionManager:
                 return
                 
             except asyncio.TimeoutError:
-                logger.error(f"Database connection attempt {attempt} failed: Connection timeout after 15 seconds")
+                logger.error(f"Database connection attempt {attempt} failed: Connection timeout after 30 seconds")
                 
                 if attempt == len(self._retry_delays):
                     # All retries exhausted

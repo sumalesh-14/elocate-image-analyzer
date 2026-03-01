@@ -480,3 +480,73 @@ Add the service URL to your Next.js environment variables and redeploy the front
 ## License
 
 Part of the E-locate platform.
+
+
+## 📚 Documentation
+
+All documentation has been organized in the [`docs/`](docs/) folder:
+
+- **[Deployment Guide](docs/RAILWAY_DEPLOYMENT_GUIDE.md)** - Deploy to Railway
+- **[Testing Guide](docs/HOW_TO_TEST.md)** - Test the deployed API
+- **[Troubleshooting](docs/RAILWAY_TROUBLESHOOTING.md)** - Fix deployment issues
+- **[API Quota Guide](docs/GEMINI_API_QUOTA_GUIDE.md)** - Manage Gemini API quota
+- **[Full Documentation Index](docs/README.md)** - Complete documentation list
+
+## 🚀 Quick Start
+
+### Local Development
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
+
+3. **Run the server:**
+   ```bash
+   python run.py
+   ```
+
+4. **Test the API:**
+   - Visit: http://localhost:8000/docs
+   - Or run: `python test_local_db.py`
+
+### Deploy to Railway
+
+1. **Import environment variables:**
+   - Use `railway-env.json` in Railway dashboard
+
+2. **Deploy:**
+   ```bash
+   railway up
+   ```
+
+3. **Test deployment:**
+   ```bash
+   .\test_railway_deployment.ps1
+   ```
+
+See [docs/RAILWAY_DEPLOYMENT_GUIDE.md](docs/RAILWAY_DEPLOYMENT_GUIDE.md) for detailed instructions.
+
+## 🔗 Live Deployment
+
+**Railway URL:** https://elocate-python-production.up.railway.app
+
+**API Endpoints:**
+- Health: `/health`
+- Docs: `/docs`
+- Analyze: `/api/v1/analyze`
+
+## 📊 Status
+
+- ✅ Local testing: All tests passing
+- ✅ Database: Connected (Supabase)
+- ✅ Gemini API: Active
+- 🔄 Railway: Deploying...
+
+See [docs/READY_TO_DEPLOY.md](docs/READY_TO_DEPLOY.md) for current status.

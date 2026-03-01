@@ -170,6 +170,7 @@ async def startup_event():
     - Database connectivity (optional - service continues if unavailable)
     """
     logger.info("Starting Image Device Identification Service")
+    logger.info(f"Google Generative AI SDK Version: {genai.__version__}")
     
     # Validate Gemini API key is set
     if not settings.GEMINI_API_KEY:

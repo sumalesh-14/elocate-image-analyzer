@@ -16,8 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/ ./app/
-COPY static/ ./static/
+COPY . .
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
@@ -26,12 +25,12 @@ RUN useradd -m -u 1000 appuser && \
 # Switch to non-root user
 USER appuser
 
-# Expose port 8000
+# Expose port (Railway will provide its own PORT)
 EXPOSE 8000
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-# Run uvicorn server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run uvicorn server via run.py which handles PORT environment variable
+CMD ["python", "run.py"]

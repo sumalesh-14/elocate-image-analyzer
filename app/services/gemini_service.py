@@ -3,6 +3,7 @@ Gemini Vision API integration service.
 Handles communication with Google's Gemini Vision API for device image analysis.
 """
 
+import logging
 import json
 import io
 import time
@@ -12,6 +13,8 @@ from PIL import Image
 import google.generativeai as genai
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # Prompt for Gemini Vision API
@@ -107,8 +110,27 @@ class GeminiService:
         """Initialize the Gemini API client."""
         try:
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            # Use gemini-2.5-flash (stable version) or gemini-flash-latest
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            
+            # Try to list available models to pick the best supported one
+            try:
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                logger.info(f"Available Gemini models: {available_models}")
+                
+                if 'models/gemini-1.5-flash' in available_models:
+                    self.model_name = 'gemini-1.5-flash'
+                elif 'models/gemini-1.5-flash-latest' in available_models:
+                    self.model_name = 'gemini-1.5-flash-latest'
+                elif 'models/gemini-pro-vision' in available_models:
+                    self.model_name = 'gemini-pro-vision'
+                else:
+                    # Fallback to 1.5-flash if listing fails or none of the above are found
+                    self.model_name = 'gemini-1.5-flash'
+            except Exception as list_err:
+                logger.warning(f"Could not list models: {str(list_err)}. Defaulting to gemini-1.5-flash")
+                self.model_name = 'gemini-1.5-flash'
+            
+            logger.info(f"Using Gemini model: {self.model_name}")
+            self.model = genai.GenerativeModel(self.model_name)
         except Exception as e:
             raise GeminiAPIError(f"Failed to initialize Gemini API: {str(e)}")
     

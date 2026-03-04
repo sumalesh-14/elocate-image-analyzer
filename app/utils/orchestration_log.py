@@ -138,8 +138,10 @@ def log_pass3_start(brand: str, num_models: int) -> None:
     _field("For brand", brand)
 
 
-def log_pass3_result(model_raw: Optional[str]) -> None:
+def log_pass3_result(model_raw: Optional[str], uncertainty_reason: Optional[str] = None) -> None:
     _field("Model (raw)", model_raw or "null")
+    if uncertainty_reason:
+        _p(f"    {_YELLOW}⚠️  Uncertainty:{_RESET} {_DIM}{uncertainty_reason}{_RESET}")
 
 
 def log_brand_resolved(name: str, is_new: bool, score: float) -> None:
@@ -187,6 +189,7 @@ def log_final_result(
     severity: str,
     contains_hazardous: bool,
     contains_precious: bool,
+    model_uncertainty_reason: Optional[str] = None,
 ) -> None:
     elapsed_ms = int((time.time() - start_time) * 1000)
 
@@ -201,6 +204,8 @@ def log_final_result(
     _field("Category", category, new_tag=category_new)
     _field("Brand", brand or "null", new_tag=brand_new)
     _field("Model", model or "null", new_tag=model_new)
+    if model_uncertainty_reason:
+        _p(f"    {_YELLOW}⚠️  Why uncertain:{_RESET} {_DIM}{model_uncertainty_reason}{_RESET}")
     _field("Device type", device_type)
 
     conf_color = _GREEN if confidence >= 0.7 else (_YELLOW if confidence >= 0.4 else _RED)
@@ -222,6 +227,119 @@ def log_final_result(
 
 def log_error(stage: str, error_code: str, message: str) -> None:
     _p(f"\n{_RED}{_BOLD}❌  ERROR at [{stage}]{_RESET}")
+    _field("Code", error_code, indent=6)
+    _field("Message", message, indent=6)
+    _p(f"{_DIM}{'─' * 68}{_RESET}\n")
+
+
+# ---------------------------------------------------------------------------
+# Material Analysis Logging
+# ---------------------------------------------------------------------------
+
+def log_material_analysis_start(
+    brand: str,
+    model: str,
+    category: str,
+    country: str
+) -> float:
+    """
+    Print the opening banner for a new material analysis request.
+    Returns the start timestamp so elapsed time can be calculated later.
+    """
+    start = time.time()
+    _p(f"\n{_BOLD}{_MAGENTA}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_MAGENTA}  🔬  NEW MATERIAL ANALYSIS REQUEST{_RESET}")
+    _p(f"{_BOLD}{_MAGENTA}{'═' * 68}{_RESET}")
+    _field("Brand", brand)
+    _field("Model", model)
+    _field("Category", category)
+    _field("Country", country)
+    return start
+
+
+def log_material_llm_priority(priority_list: List[str], workers: List[str]) -> None:
+    """Log the LLM priority order for material analysis."""
+    _section("🎯", "LLM PRIORITY ORDER", _CYAN)
+    _field("Priority", " → ".join([p.upper() for p in priority_list]))
+    _p(f"\n  {_DIM}Available workers:{_RESET}")
+    for i, worker in enumerate(workers, 1):
+        _p(f"    {_DIM}{i}.{_RESET} {worker}")
+
+
+def log_material_llm_attempt(llm_name: str, model: str) -> None:
+    """Log attempt to use a specific LLM for material analysis."""
+    _p(f"\n  {_BLUE}🤖  Attempting with: {_RESET}{_BOLD}{llm_name}{_RESET} {_DIM}({model}){_RESET}")
+
+
+def log_material_llm_success(llm_name: str, model: str, material_count: int) -> None:
+    """Log successful material analysis."""
+    _p(f"  {_GREEN}✅  Success!{_RESET} Found {_BOLD}{material_count}{_RESET} materials")
+
+
+def log_material_llm_failed(llm_name: str, reason: str, next_llm: Optional[str] = None) -> None:
+    """Log failed LLM attempt and fallback."""
+    if next_llm:
+        _p(f"  {_YELLOW}⚠️   {llm_name} failed ({reason}). Trying {next_llm}...{_RESET}")
+    else:
+        _p(f"  {_RED}❌  {llm_name} failed ({reason}). No more providers.{_RESET}")
+
+
+def log_material_results(
+    start_time: float,
+    materials: List[dict],
+    analysis_description: str,
+    model_used: str
+) -> None:
+    """Log the final material analysis results."""
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    
+    _p(f"\n{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_GREEN}  ✅  MATERIAL ANALYSIS COMPLETE  ({elapsed_ms} ms){_RESET}")
+    _p(f"{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    
+    _section("💎", "MATERIALS FOUND", _CYAN)
+    _p(f"  {_DIM}{analysis_description}{_RESET}\n")
+    
+    # Separate precious and base materials
+    precious = [m for m in materials if m.get('isPrecious') or m.get('is_precious')]
+    base = [m for m in materials if not (m.get('isPrecious') or m.get('is_precious'))]
+    
+    if precious:
+        _p(f"  {_YELLOW}💰 PRECIOUS METALS:{_RESET}")
+        for mat in precious:
+            name = mat.get('materialName') or mat.get('material_name')
+            qty = mat.get('estimatedQuantityGrams') or mat.get('estimated_quantity_grams')
+            rate = mat.get('marketRatePerGram') or mat.get('market_rate_per_gram')
+            curr = mat.get('currency')
+            found = mat.get('foundIn') or mat.get('found_in') or 'Unknown component'
+            _p(f"    {_BOLD}{name}{_RESET}")
+            _p(f"      {_DIM}Quantity:{_RESET} {qty:.3f}g  {_DIM}Rate:{_RESET} {rate:.2f} {curr}/g")
+            _p(f"      {_DIM}Found in:{_RESET} {found}")
+    
+    if base:
+        _p(f"\n  {_CYAN}🔩 BASE MATERIALS:{_RESET}")
+        for mat in base:
+            name = mat.get('materialName') or mat.get('material_name')
+            qty = mat.get('estimatedQuantityGrams') or mat.get('estimated_quantity_grams')
+            rate = mat.get('marketRatePerGram') or mat.get('market_rate_per_gram')
+            curr = mat.get('currency')
+            found = mat.get('foundIn') or mat.get('found_in') or 'Unknown component'
+            _p(f"    {_BOLD}{name}{_RESET}")
+            _p(f"      {_DIM}Quantity:{_RESET} {qty:.3f}g  {_DIM}Rate:{_RESET} {rate:.2f} {curr}/g")
+            _p(f"      {_DIM}Found in:{_RESET} {found}")
+    
+    _section("🤖", "ANALYSIS METADATA", _BLUE)
+    _field("Model used", model_used)
+    _field("Total materials", len(materials))
+    _field("Precious metals", len(precious))
+    _field("Base materials", len(base))
+    
+    _p(f"\n{_DIM}{'─' * 68}{_RESET}\n")
+
+
+def log_material_analysis_error(error_code: str, message: str) -> None:
+    """Log material analysis error."""
+    _p(f"\n{_RED}{_BOLD}❌  MATERIAL ANALYSIS ERROR{_RESET}")
     _field("Code", error_code, indent=6)
     _field("Message", message, indent=6)
     _p(f"{_DIM}{'─' * 68}{_RESET}\n")

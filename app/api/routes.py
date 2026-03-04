@@ -14,7 +14,17 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, FileResponse
 
 from app.models.response import IdentificationResponse, ErrorData, HealthResponse, DeviceData
+from app.models.material_analysis import (
+    MaterialAnalysisRequest,
+    MaterialAnalysisResponse,
+    MaterialAnalysisData,
+    BrandInfo,
+    CategoryInfo,
+    ModelInfo,
+    AnalysisMetadata
+)
 from app.services.analyzer import analyzer_service, AnalysisError
+from app.services.material_analyzer import material_analyzer_service, MaterialAnalysisError
 from app.services.llm_router import llm_service
 from app.api.middleware import limiter
 
@@ -260,4 +270,126 @@ async def test_interface() -> HTMLResponse:
         return HTMLResponse(
             content="<html><body><h1>Error</h1><p>Failed to load test interface</p></body></html>",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+@router.post(
+    "/api/v1/analyze-materials",
+    response_model=MaterialAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Analyze device materials",
+    description="Analyze recyclable and precious materials in a device based on brand, model, and category"
+)
+@limiter.limit("10/minute")
+async def analyze_materials(
+    request: Request,
+    analysis_request: MaterialAnalysisRequest
+) -> MaterialAnalysisResponse:
+    """
+    Analyze device materials and estimate recyclable content with market rates.
+    
+    Uses LLM to identify precious metals, base metals, and other recyclable materials
+    in the specified device, providing quantity estimates and current market rates
+    for the specified country.
+    
+    Args:
+        request: FastAPI request object (required for rate limiting)
+        analysis_request: Material analysis request with device details
+        
+    Returns:
+        MaterialAnalysisResponse with material breakdown and market rates
+    """
+    start_time = time.time()
+    
+    try:
+        # Analyze materials using LLM
+        materials, analysis_description, model_used = await material_analyzer_service.analyze_materials(
+            analysis_request
+        )
+        
+        # Calculate processing time
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        # Build response data
+        response_data = MaterialAnalysisData(
+            brand=BrandInfo(
+                id=analysis_request.brand_id,
+                name=analysis_request.brand_name
+            ),
+            category=CategoryInfo(
+                id=analysis_request.category_id,
+                name=analysis_request.category_name
+            ),
+            model=ModelInfo(
+                id=analysis_request.model_id,
+                name=analysis_request.model_name
+            ),
+            country=analysis_request.country,
+            analysisDescription=analysis_description,
+            materials=materials,
+            metadata=AnalysisMetadata(
+                llmModel=model_used
+            )
+        )
+        
+        logger.info(
+            "Material analysis completed successfully",
+            extra={
+                "brand": analysis_request.brand_name,
+                "model": analysis_request.model_name,
+                "material_count": len(materials),
+                "processing_time_ms": processing_time
+            }
+        )
+        
+        # Return success response
+        return MaterialAnalysisResponse(
+            success=True,
+            processingTimeMs=processing_time,
+            data=response_data
+        )
+        
+    except MaterialAnalysisError as e:
+        # Handle known material analysis errors
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        logger.warning(
+            f"Material analysis error: {e.error_code}",
+            extra={
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "processing_time_ms": processing_time
+            }
+        )
+        
+        return MaterialAnalysisResponse(
+            success=False,
+            processingTimeMs=processing_time,
+            error={
+                "code": e.error_code,
+                "message": e.message
+            }
+        )
+        
+    except Exception as e:
+        # Handle unexpected errors
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        logger.error(
+            "Unexpected error during material analysis",
+            extra={
+                "error": str(e),
+                "processing_time_ms": processing_time
+            },
+            exc_info=True
+        )
+        
+        return MaterialAnalysisResponse(
+            success=False,
+            processingTimeMs=processing_time,
+            error={
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred during material analysis"
+            }
         )

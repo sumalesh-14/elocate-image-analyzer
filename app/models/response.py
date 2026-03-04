@@ -86,6 +86,13 @@ class DeviceData(BaseModel):
         description="Details about hazardous materials"
     )
     
+    # Model identification uncertainty
+    model_uncertainty_reason: Optional[str] = Field(
+        None,
+        max_length=200,
+        description="Explanation of why model identification was difficult (if uncertain)"
+    )
+    
     # Database matching fields
     category_id: Optional[UUID] = Field(
         None,

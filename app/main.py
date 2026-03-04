@@ -250,6 +250,7 @@ async def root():
             "status": "running",
             "endpoints": {
                 "analyze": "/api/v1/analyze",
+                "analyze_materials": "/api/v1/analyze-materials",
                 "health": "/health",
                 "test": "/test",
                 "test_interface": "/test-ui",

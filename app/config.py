@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT: str = "10/minute"
     
+    # Image Analysis LLM Priority Order
+    IMAGE_ANALYSIS_LLM_PRIORITY: str = "gemini,openai,groq"
+    
+    # Material Analysis LLM Priority Order
+    MATERIAL_ANALYSIS_LLM_PRIORITY: str = "groq,gemini,openai"
+    
     # Database Configuration
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
@@ -95,6 +101,20 @@ class Settings(BaseSettings):
         if self.GROQ_API_KEYS:
             return [key.strip() for key in self.GROQ_API_KEYS.split(",") if key.strip()]
         return []
+    
+    @property
+    def material_analysis_llm_priority_list(self) -> List[str]:
+        """Parse MATERIAL_ANALYSIS_LLM_PRIORITY into list of provider names."""
+        if self.MATERIAL_ANALYSIS_LLM_PRIORITY:
+            return [provider.strip().lower() for provider in self.MATERIAL_ANALYSIS_LLM_PRIORITY.split(",") if provider.strip()]
+        return ["groq", "gemini", "openai"]  # Default order
+    
+    @property
+    def image_analysis_llm_priority_list(self) -> List[str]:
+        """Parse IMAGE_ANALYSIS_LLM_PRIORITY into list of provider names."""
+        if self.IMAGE_ANALYSIS_LLM_PRIORITY:
+            return [provider.strip().lower() for provider in self.IMAGE_ANALYSIS_LLM_PRIORITY.split(",") if provider.strip()]
+        return ["gemini", "openai", "groq"]  # Default order
     
     @property
     def database_url(self) -> str:

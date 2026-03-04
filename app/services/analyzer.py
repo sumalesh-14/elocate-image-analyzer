@@ -250,8 +250,15 @@ class AnalyzerService:
                     
                     if pass3_result and pass3_result.get("model"):
                         model_pick = pass3_result.get("model")
+                    
+                    # Extract uncertainty reason if provided
+                    model_uncertainty_reason = pass3_result.get("uncertainty_reason") if pass3_result else None
+                    
+                    # Extract confidence level and convert to numeric score
+                    confidence_level = pass3_result.get("confidence", "medium") if pass3_result else "medium"
+                    model_confidence = self._convert_confidence_level_to_score(confidence_level)
                         
-                    olog.log_pass3_result(model_pick)
+                    olog.log_pass3_result(model_pick, model_uncertainty_reason)
                     
                 except TimeoutError as e:
                     olog.log_error("PASS-3", "ANALYSIS_TIMEOUT", str(e))
@@ -268,7 +275,8 @@ class AnalyzerService:
                 # Resolve Model
                 if model_pick:
                     model_match = await database_matcher._resolve_model(
-                        model_pick, models, brand_match.id, category_match.id, pass1_confidence,
+                        model_pick, models, brand_match.id, category_match.id, 
+                        model_confidence if 'model_confidence' in locals() else pass1_confidence,
                         metadata=pass3_result if 'pass3_result' in locals() else None
                     )
 
@@ -303,6 +311,10 @@ class AnalyzerService:
             enhanced_fields = self._process_enhanced_fields(
                 pass2_result, resolved_category, device_type
             )
+            
+            # Add model uncertainty reason if available
+            if 'model_uncertainty_reason' in locals() and model_uncertainty_reason:
+                enhanced_fields["model_uncertainty_reason"] = model_uncertainty_reason
 
             db_status = database_matcher._determine_status(
                 category_match, brand_match, model_match, brand_pick, model_pick
@@ -351,6 +363,7 @@ class AnalyzerService:
                 severity=enhanced_fields.get("severity", "low"),
                 contains_hazardous=enhanced_fields.get("contains_hazardous_materials", False),
                 contains_precious=enhanced_fields.get("contains_precious_metals", False),
+                model_uncertainty_reason=enhanced_fields.get("model_uncertainty_reason"),
             )
 
             logger.info(
@@ -413,6 +426,25 @@ class AnalyzerService:
             f"adjustments={adjustments}, final={final_confidence}"
         )
         return final_confidence
+    
+    def _convert_confidence_level_to_score(self, confidence_level: str) -> float:
+        """
+        Convert confidence level string to numeric score.
+        
+        Args:
+            confidence_level: Confidence level from LLM ("high", "medium", "low")
+            
+        Returns:
+            Numeric confidence score between 0.0 and 1.0
+        """
+        level_map = {
+            "high": 0.9,      # High confidence -> auto-seed enabled
+            "medium": 0.6,    # Medium confidence -> no auto-seed
+            "low": 0.3        # Low confidence -> no auto-seed
+        }
+        score = level_map.get(confidence_level.lower(), 0.6)
+        logger.debug(f"Converted confidence level '{confidence_level}' to score {score}")
+        return score
 
     # Keep legacy method name so any other callers don't break
     def _calculate_confidence(self, gemini_result: dict) -> float:

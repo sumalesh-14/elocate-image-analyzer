@@ -219,6 +219,30 @@
             font-style: italic;
         }
 
+        .uncertainty-section {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+
+        .uncertainty-label {
+            font-weight: 600;
+            color: #856404;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .uncertainty-text {
+            color: #664d03;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
         .severity-badge {
             display: inline-block;
             padding: 6px 14px;
@@ -477,6 +501,18 @@
                         <span class="info-label">Model:</span>
                         <span class="info-value" id="model"></span>
                     </div>
+                </div>
+
+                <!-- Model Uncertainty Section -->
+                <div class="uncertainty-section" id="modelUncertaintySection" style="display: none; margin-bottom: 20px;">
+                    <div class="uncertainty-label">
+                        <span>⚠️</span>
+                        <span>Why Model Identification Was Difficult:</span>
+                    </div>
+                    <div class="uncertainty-text" id="modelUncertaintyReason"></div>
+                </div>
+
+                <div class="device-info">
                     <div class="info-row">
                         <span class="info-label">Device Type:</span>
                         <span class="info-value" id="deviceType"></span>
@@ -740,6 +776,16 @@
             } else {
                 modelElement.textContent = 'Not detected';
                 modelElement.classList.add('null');
+            }
+
+            // Display model uncertainty reason if present
+            const modelUncertaintySection = document.getElementById('modelUncertaintySection');
+            const modelUncertaintyReason = document.getElementById('modelUncertaintyReason');
+            if (deviceData.model_uncertainty_reason) {
+                modelUncertaintySection.style.display = 'block';
+                modelUncertaintyReason.textContent = deviceData.model_uncertainty_reason;
+            } else {
+                modelUncertaintySection.style.display = 'none';
             }
 
             document.getElementById('deviceType').textContent = deviceData.deviceType;

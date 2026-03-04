@@ -105,15 +105,32 @@ PREVIOUS ANALYSIS identified the model as: "{pass2_model}"
 AVAILABLE MODELS for {brand} {category} (from our database):
 {model_list}
 
-TASK:
-- If "{pass2_model}" (or the visually identifiable model) EXACTLY matches or is a close variation of a name in the list above, return that exact name from the list.
-- If the model is clearly identifiable (visually or from context) but NOT in the list, return "NEW: <model name>".
-- Only return null if you cannot reasonably identify the model at all.
-- If you return a NEW model, list down all recycle items that a recycling facility would consider (e.g., gold, silver, lithium battery, copper). Estimate the grams, market price in Indian Rupees, and whether it is precious.
+CRITICAL TASK:
+You MUST return a model name. DO NOT return null unless the image is completely blank or corrupted.
+
+1. HIGH CONFIDENCE: If you can see clear model identifiers (text, numbers, unique features):
+   - If it EXACTLY matches a model from the list above → return that exact name
+   - If it's NOT in the list → return "NEW: <specific model name>"
+
+2. MEDIUM CONFIDENCE: If you can make an educated guess but aren't certain:
+   - Pick the MOST LIKELY model from the list above
+   - Provide a 2-line explanation of why identification is difficult
+
+3. LOW CONFIDENCE: If the image is unclear but you can see it's a {brand} {category}:
+   - Pick the MOST COMMON or GENERIC model from the list above
+   - Provide a 2-line explanation of the difficulty
+
+IMPORTANT RULES:
+- NEVER return null unless the image is completely unreadable
+- Use "NEW:" ONLY when you can see specific model identifiers (text/numbers)
+- When uncertain, ALWAYS pick from the provided list and explain why
+- Your explanation should be max 2 lines and describe what makes identification difficult
 
 Return ONLY valid JSON – no markdown fences:
 {{
-  "model": "<exact model from list, OR NEW: <name>, OR null>",
+  "model": "<exact model from list, OR NEW: <specific name>, OR best guess from list>",
+  "confidence": "<high|medium|low>",
+  "uncertainty_reason": "<2-line explanation if confidence is medium/low, otherwise null>",
   "recycle_items": [
     {{
       "type": "<material name, e.g., gold>",
@@ -124,6 +141,12 @@ Return ONLY valid JSON – no markdown fences:
   ]
 }}
 
+Examples:
+- High confidence with NEW model: {{"model": "NEW: MacBook Pro 16-inch 2021", "confidence": "high", "uncertainty_reason": null}}
+- High confidence from list: {{"model": "MacBook Pro", "confidence": "high", "uncertainty_reason": null}}
+- Medium confidence: {{"model": "MacBook Pro", "confidence": "medium", "uncertainty_reason": "Image angle obscures model year markings. Screen size and design suggest Pro model."}}
+- Low confidence: {{"model": "MacBook Air", "confidence": "low", "uncertainty_reason": "Poor lighting and image quality. Guessing Air based on thin profile visible."}}
+
 Return ONLY the JSON object, nothing else.
 """
 
@@ -132,10 +155,11 @@ class LLMAPIError(Exception):
     pass
 
 class LLMWorker:
-    def __init__(self, provider: str, api_key: str, model_name: str, index: int):
+    def __init__(self, provider: str, api_key: str, model_name: str, index: int, text_only_model: str = None):
         self.provider = provider
         self.api_key = api_key
-        self.model_name = model_name
+        self.model_name = model_name  # For vision/image tasks
+        self.text_only_model = text_only_model or model_name  # For text-only tasks
         self.display_name = f"{provider.capitalize()} (Key #{index})"
         
         # Initialize clients lazily if possible, or right away
@@ -154,6 +178,16 @@ class LLMWorker:
             return await self._generate_openai(image_bytes, prompt)
         elif self.provider == "groq":
             return await self._generate_groq(image_bytes, prompt)
+        raise ValueError(f"Unknown provider: {self.provider}")
+    
+    async def generate_text_only(self, prompt: str) -> str:
+        """Generate text-only response without image (for material analysis, etc.)."""
+        if self.provider == "gemini":
+            return await self._generate_gemini_text_only(prompt)
+        elif self.provider == "openai":
+            return await self._generate_openai_text_only(prompt)
+        elif self.provider == "groq":
+            return await self._generate_groq_text_only(prompt)
         raise ValueError(f"Unknown provider: {self.provider}")
 
     async def _generate_gemini(self, image_bytes: bytes, prompt: str) -> str:
@@ -174,6 +208,18 @@ class LLMWorker:
                     types.Part.from_bytes(data=raw_bytes, mime_type=mime),
                     prompt,
                 ]
+            )
+        )
+        return response.text
+    
+    async def _generate_gemini_text_only(self, prompt: str) -> str:
+        """Generate text-only response from Gemini without image."""
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: self.client.models.generate_content(
+                model=self.text_only_model,
+                contents=[prompt]
             )
         )
         return response.text
@@ -226,6 +272,34 @@ class LLMWorker:
             response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
+    
+    async def _generate_groq_text_only(self, prompt: str) -> str:
+        """Generate text-only response from Groq without image."""
+        response = await self.client.chat.completions.create(
+            model=self.text_only_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            response_format={"type": "json_object"}
+        )
+        return response.choices[0].message.content
+    
+    async def _generate_openai_text_only(self, prompt: str) -> str:
+        """Generate text-only response from OpenAI without image."""
+        response = await self.client.chat.completions.create(
+            model=self.text_only_model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            response_format={"type": "json_object"}
+        )
+        return response.choices[0].message.content
 
 class LLMRouterService:
     """Service for interacting with multiple LLMs in a fallback/router architecture."""
@@ -233,6 +307,7 @@ class LLMRouterService:
     def __init__(self):
         self.workers: List[LLMWorker] = []
         self.current_idx = 0
+        self._image_analysis_workers = None
         
         # Load API keys
         gemini_keys = settings.gemini_api_keys_list
@@ -241,23 +316,99 @@ class LLMRouterService:
 
         for i, key in enumerate(gemini_keys):
             if key and "your_" not in key:
-                self.workers.append(LLMWorker("gemini", key, "gemini-2.5-flash", i+1))
+                self.workers.append(LLMWorker("gemini", key, "gemini-2.5-flash", i+1, text_only_model="gemini-2.5-flash"))
                 
         for i, key in enumerate(openai_keys):
             if key and "your_" not in key:
-                self.workers.append(LLMWorker("openai", key, "gpt-4o-mini", i+1))
+                self.workers.append(LLMWorker("openai", key, "gpt-4o-mini", i+1, text_only_model="gpt-4o-mini"))
                 
         for i, key in enumerate(groq_keys):
             if key and "your_" not in key:
-                self.workers.append(LLMWorker("groq", key, "llama-3.2-11b-vision-preview", i+1))
+                # Use vision model for images, but text-only model for text tasks
+                self.workers.append(LLMWorker("groq", key, "llama-3.2-11b-vision-preview", i+1, text_only_model="llama-3.3-70b-versatile"))
                 
         if not self.workers:
             logger.warning("No valid LLM API keys found! System will fail!")
         else:
             logger.info(f"LLMRouterService initialized with {len(self.workers)} workers: {[w.display_name for w in self.workers]}")
+    
+    def _get_image_analysis_workers(self) -> List[LLMWorker]:
+        """
+        Get LLM workers ordered by image analysis priority.
+        This creates a separate worker list specifically for image analysis.
+        """
+        if self._image_analysis_workers is not None:
+            return self._image_analysis_workers
+        
+        # Get priority order from config
+        priority_order = settings.image_analysis_llm_priority_list
+        logger.info(f"Image Analysis LLM Priority: {priority_order}")
+        
+        # Create a map of provider -> workers
+        provider_workers = {
+            "gemini": [],
+            "openai": [],
+            "groq": []
+        }
+        
+        for worker in self.workers:
+            if worker.provider in provider_workers:
+                provider_workers[worker.provider].append(worker)
+        
+        # Build ordered list based on priority
+        ordered_workers = []
+        for provider in priority_order:
+            if provider in provider_workers:
+                ordered_workers.extend(provider_workers[provider])
+        
+        # Add any remaining workers not in priority list
+        for provider, workers in provider_workers.items():
+            if provider not in priority_order:
+                ordered_workers.extend(workers)
+        
+        self._image_analysis_workers = ordered_workers
+        logger.info(
+            f"Image Analysis Workers initialized: {[w.display_name for w in ordered_workers]}"
+        )
+        
+        return self._image_analysis_workers
 
     async def _call_llm_with_fallback(self, image_bytes: bytes, prompt: str) -> Dict[str, Any]:
-        """Iterates through workers until one succeeds."""
+        """Iterates through workers until one succeeds (uses image analysis priority)."""
+        workers = self._get_image_analysis_workers()
+        
+        if not workers:
+            raise LLMAPIError("No active LLM workers available.")
+            
+        attempts = 0
+        max_attempts = len(workers)
+        
+        for idx, worker in enumerate(workers):
+            log_llm_attempt(worker.display_name)
+            
+            try:
+                response_text = await asyncio.wait_for(
+                    worker.generate(image_bytes, prompt),
+                    timeout=settings.REQUEST_TIMEOUT,
+                )
+                return self._parse_response(response_text)
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                next_worker = workers[idx + 1] if idx + 1 < len(workers) else None
+                
+                reason = "Rate Limit/Timeout" if "429" in error_str or "timeout" in error_str else "API Error"
+                if next_worker:
+                    log_llm_switched(worker.display_name, reason, next_worker.display_name)
+                
+                attempts += 1
+                if attempts >= max_attempts:
+                    break
+                
+        raise LLMAPIError("All LLM workers failed or rate-limited.")
+    
+    async def _call_llm_text_only_with_fallback(self, prompt: str) -> Dict[str, Any]:
+        """Iterates through workers for text-only generation until one succeeds."""
         if not self.workers:
             raise LLMAPIError("No active LLM workers available.")
             
@@ -270,7 +421,7 @@ class LLMRouterService:
             
             try:
                 response_text = await asyncio.wait_for(
-                    worker.generate(image_bytes, prompt),
+                    worker.generate_text_only(prompt),
                     timeout=settings.REQUEST_TIMEOUT,
                 )
                 return self._parse_response(response_text)
@@ -354,6 +505,22 @@ class LLMRouterService:
 
     async def check_availability(self) -> bool:
         return await self.check_api_availability()
+    
+    async def generate_text_only(self, prompt: str) -> Dict[str, Any]:
+        """
+        Public method for text-only generation (no image required).
+        Used for material analysis and other text-based tasks.
+        
+        Args:
+            prompt: The text prompt for the LLM
+            
+        Returns:
+            Dict containing the parsed JSON response
+            
+        Raises:
+            LLMAPIError: If all workers fail
+        """
+        return await self._call_llm_text_only_with_fallback(prompt)
 
 # Global service instance
 llm_service = LLMRouterService()

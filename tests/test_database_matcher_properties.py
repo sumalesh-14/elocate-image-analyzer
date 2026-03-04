@@ -22,7 +22,7 @@ from app.config import settings as app_settings
     num_candidates=st.integers(min_value=0, max_value=10),
     best_score=st.floats(min_value=0.0, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_category_threshold_enforcement(category_text: str, num_candidates: int, best_score: float):
     """
@@ -255,7 +255,7 @@ async def test_category_threshold_enforcement_database_unavailable():
     num_inactive=st.integers(min_value=0, max_value=5),
     best_score=st.floats(min_value=0.80, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_active_records_only_category(category_text: str, num_active: int, num_inactive: int, best_score: float):
     """
@@ -330,7 +330,7 @@ async def test_active_records_only_category(category_text: str, num_active: int,
     num_active=st.integers(min_value=0, max_value=5),
     best_score=st.floats(min_value=0.80, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_active_records_only_brand(brand_text: str, num_active: int, best_score: float):
     """
@@ -405,7 +405,7 @@ async def test_active_records_only_brand(brand_text: str, num_active: int, best_
     num_active=st.integers(min_value=0, max_value=5),
     best_score=st.floats(min_value=0.75, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_active_records_only_model(model_text: str, num_active: int, best_score: float):
     """
@@ -541,7 +541,7 @@ async def test_active_records_only_inactive_excluded():
     num_candidates=st.integers(min_value=2, max_value=10),
     score_seed=st.integers(min_value=0, max_value=1000)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_best_match_selection_category(query_text: str, num_candidates: int, score_seed: int):
     """
@@ -615,7 +615,7 @@ async def test_best_match_selection_category(query_text: str, num_candidates: in
     num_candidates=st.integers(min_value=2, max_value=10),
     score_seed=st.integers(min_value=0, max_value=1000)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_best_match_selection_brand(query_text: str, num_candidates: int, score_seed: int):
     """
@@ -691,7 +691,7 @@ async def test_best_match_selection_brand(query_text: str, num_candidates: int, 
     num_candidates=st.integers(min_value=2, max_value=10),
     score_seed=st.integers(min_value=0, max_value=1000)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_best_match_selection_model(query_text: str, num_candidates: int, score_seed: int):
     """
@@ -885,7 +885,7 @@ async def test_best_match_selection_tie_scenario():
     num_invalid_brands=st.integers(min_value=0, max_value=5),
     best_score=st.floats(min_value=0.80, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_brand_category_validation(
     brand_text: str, 
@@ -1173,7 +1173,7 @@ async def test_brand_category_validation_query_structure():
     num_candidates=st.integers(min_value=0, max_value=10),
     best_score=st.floats(min_value=0.0, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_brand_threshold_enforcement(brand_text: str, num_candidates: int, best_score: float):
     """
@@ -1434,7 +1434,7 @@ async def test_brand_threshold_enforcement_database_unavailable():
     num_invalid_models=st.integers(min_value=0, max_value=5),
     best_score=st.floats(min_value=0.75, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_model_category_brand_validation(
     model_text: str, 
@@ -1807,7 +1807,7 @@ async def test_model_category_brand_validation_database_unavailable():
     num_candidates=st.integers(min_value=0, max_value=10),
     best_score=st.floats(min_value=0.0, max_value=1.0)
 )
-@settings(max_examples=20)
+@settings(max_examples=100)
 @pytest.mark.property_test
 async def test_model_threshold_enforcement(model_text: str, num_candidates: int, best_score: float):
     """
@@ -2087,3 +2087,811 @@ async def test_model_threshold_enforcement_database_unavailable():
         assert result is None, \
             "When database is unavailable, should return None"
 
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@given(
+    category_text=st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126)),
+    brand_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    model_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    category_found=st.booleans(),
+    brand_found=st.booleans(),
+    category_score=st.floats(min_value=0.80, max_value=1.0),
+    brand_score=st.floats(min_value=0.80, max_value=1.0),
+    model_score=st.floats(min_value=0.75, max_value=1.0)
+)
+@settings(max_examples=100)
+@pytest.mark.property_test
+async def test_hierarchical_matching_dependencies(
+    category_text: str,
+    brand_text: Optional[str],
+    model_text: Optional[str],
+    category_found: bool,
+    brand_found: bool,
+    category_score: float,
+    brand_score: float,
+    model_score: float
+):
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    For any matching operation, brand matching should only execute when category_id 
+    is not null, and model matching should only execute when both category_id and 
+    brand_id are not null.
+    
+    This property verifies the hierarchical dependency chain:
+    - Category matching always executes (no dependencies)
+    - Brand matching requires category_id to be present
+    - Model matching requires both category_id and brand_id to be present
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Setup mock category data
+    category_id = uuid4() if category_found else None
+    category_rows = [{'id': category_id, 'name': 'TestCategory'}] if category_found else []
+    
+    # Setup mock brand data
+    brand_id = uuid4() if brand_found else None
+    brand_rows = [{'id': brand_id, 'name': 'TestBrand'}] if brand_found else []
+    
+    # Setup mock model data
+    model_id = uuid4()
+    model_rows = [{'id': model_id, 'name': 'TestModel'}]
+    
+    # Track which queries were executed
+    query_calls = []
+    
+    async def mock_fetch(query, *params):
+        """Track query execution and return appropriate results"""
+        query_lower = query.lower()
+        query_calls.append(query_lower)
+        
+        if 'device_category' in query_lower:
+            return category_rows
+        elif 'device_brand' in query_lower or 'category_brand' in query_lower:
+            return brand_rows
+        elif 'device_model' in query_lower:
+            return model_rows
+        return []
+    
+    mock_conn.fetch = AsyncMock(side_effect=mock_fetch)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+            # Setup mock responses for fuzzy matching
+            def mock_find_best_side_effect(query, candidates, threshold):
+                if not candidates:
+                    return None
+                
+                # Determine which entity we're matching based on candidates
+                if candidates and 'TestCategory' in str(candidates):
+                    if category_found and category_score >= threshold:
+                        return ({'id': category_id, 'name': 'TestCategory'}, category_score)
+                    return None
+                elif candidates and 'TestBrand' in str(candidates):
+                    if brand_found and brand_score >= threshold:
+                        return ({'id': brand_id, 'name': 'TestBrand'}, brand_score)
+                    return None
+                elif candidates and 'TestModel' in str(candidates):
+      
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@given(
+    category_text=st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126)),
+    brand_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    model_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    failure_scenario=st.sampled_from([
+        "no_candidates",
+        "below_threshold_category",
+        "below_threshold_brand",
+        "below_threshold_model",
+        "database_unavailable"
+    ])
+)
+@settings(max_examples=100)
+@pytest.mark.property_test
+async def test_null_id_on_match_failure(
+    category_text: str,
+    brand_text: Optional[str],
+    model_text: Optional[str],
+    failure_scenario: str
+):
+    """
+    **Validates: Requirements 6.3**
+    
+    For any failed database match where the threshold is not met or no candidates exist,
+    the corresponding id field should be null.
+    
+    This property tests various failure scenarios:
+    - no_candidates: Database returns empty result set
+    - below_threshold_category: Category similarity score below 0.80
+    - below_threshold_brand: Brand similarity score below 0.80
+    - below_threshold_model: Model similarity score below 0.75
+    - database_unavailable: Database connection is not available
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Setup mock data based on failure scenario
+    if failure_scenario == "no_candidates":
+        # Empty result sets - no candidates in database
+        category_rows = []
+        brand_rows = []
+        model_rows = []
+    else:
+        # Candidates exist but will fail threshold or other checks
+        category_id = uuid4()
+        brand_id = uuid4()
+        model_id = uuid4()
+        
+        category_rows = [{'id': category_id, 'name': 'TestCategory'}]
+        brand_rows = [{'id': brand_id, 'name': 'TestBrand'}]
+        model_rows = [{'id': model_id, 'name': 'TestModel'}]
+    
+    async def mock_fetch(query, *params):
+        """Return appropriate results based on query type"""
+        query_lower = query.lower()
+        
+        if 'device_category' in query_lower:
+            return category_rows
+        elif 'device_brand' in query_lower or 'category_brand' in query_lower:
+            return brand_rows
+        elif 'device_model' in query_lower:
+            return model_rows
+        return []
+    
+    mock_conn.fetch = AsyncMock(side_effect=mock_fetch)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    if failure_scenario == "database_unavailable":
+        # Database is not available
+        with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+            mock_db_manager.is_available.return_value = False
+            
+            # Test category matching
+            category_result = await matcher.match_category(category_text)
+            
+            # Property: When database is unavailable, category_id should be None
+            assert category_result is None, \
+                "category_id should be None when database is unavailable"
+            
+            # Test brand matching (if brand_text provided)
+            if brand_text:
+                brand_result = await matcher.match_brand(brand_text, uuid4())
+                
+                # Property: When database is unavailable, brand_id should be None
+                assert brand_result is None, \
+                    "brand_id should be None when database is unavailable"
+            
+            # Test model matching (if model_text provided)
+            if model_text:
+                model_result = await matcher.match_model(model_text, uuid4(), uuid4())
+                
+                # Property: When database is unavailable, model_id should be None
+                assert model_result is None, \
+                    "model_id should be None when database is unavailable"
+    
+    else:
+        # Database is available but matching fails
+        with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+            mock_db_manager.is_available.return_value = True
+            mock_db_manager.pool = mock_pool
+            
+            with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+                # Setup mock responses based on failure scenario
+                if failure_scenario == "no_candidates":
+                    # No candidates means find_best_match returns None
+                    mock_find_best.return_value = None
+                    
+                elif failure_scenario == "below_threshold_category":
+                    # Category score below threshold (0.79 < 0.80)
+                    mock_find_best.return_value = None
+                    
+                elif failure_scenario == "below_threshold_brand":
+                    # Category succeeds, brand fails threshold
+                    def mock_find_best_side_effect(query, candidates, threshold):
+                        if not candidates:
+                            return None
+                        # Category succeeds
+                        if 'TestCategory' in str(candidates):
+                            return ({'id': category_rows[0]['id'], 'name': 'TestCategory'}, 0.85)
+                        # Brand fails threshold
+                        elif 'TestBrand' in str(candidates):
+                            return None
+                        return None
+                    
+                    mock_find_best.side_effect = mock_find_best_side_effect
+                    
+                elif failure_scenario == "below_threshold_model":
+                    # Category and brand succeed, model fails threshold
+                    def mock_find_best_side_effect(query, candidates, threshold):
+                        if not candidates:
+                            return None
+                        # Category succeeds
+                        if 'TestCategory' in str(candidates):
+                            return ({'id': category_rows[0]['id'], 'name': 'TestCategory'}, 0.85)
+                        # Brand succeeds
+                        elif 'TestBrand' in str(candidates):
+                            return ({'id': brand_rows[0]['id'], 'name': 'TestBrand'}, 0.85)
+                        # Model fails threshold
+                        elif 'TestModel' in str(candidates):
+                            return None
+                        return None
+                    
+                    mock_find_best.side_effect = mock_find_best_side_effect
+                
+                # Test category matching
+                category_result = await matcher.match_category(category_text)
+                
+                # Property: When category matching fails, category_id should be None
+                if failure_scenario in ["no_candidates", "below_threshold_category"]:
+                    assert category_result is None, \
+                        f"category_id should be None when {failure_scenario}"
+                
+                # Test brand matching (if brand_text provided and category succeeded)
+                if brand_text and failure_scenario not in ["no_candidates", "below_threshold_category"]:
+                    # Get category_id from successful category match
+                    test_category_id = category_rows[0]['id'] if category_rows else None
+                    
+                    if test_category_id:
+                        brand_result = await matcher.match_brand(brand_text, test_category_id)
+                        
+                        # Property: When brand matching fails, brand_id should be None
+                        if failure_scenario == "below_threshold_brand":
+                            assert brand_result is None, \
+                                f"brand_id should be None when {failure_scenario}"
+                
+                # Test model matching (if model_text provided and category+brand succeeded)
+                if model_text and failure_scenario == "below_threshold_model":
+                    test_category_id = category_rows[0]['id'] if category_rows else None
+                    test_brand_id = brand_rows[0]['id'] if brand_rows else None
+                    
+                    if test_category_id and test_brand_id:
+                        model_result = await matcher.match_model(model_text, test_category_id, test_brand_id)
+                        
+                        # Property: When model matching fails, model_id should be None
+                        assert model_result is None, \
+                            f"model_id should be None when {failure_scenario}"
+
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_null_id_on_match_failure_no_candidates_category():
+    """
+    **Validates: Requirements 6.3**
+    
+    Specific test: When no category candidates exist in database, category_id should be None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Empty result set - no categories in database
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        result = await matcher.match_category("Mobile Phone")
+        
+        # Property: No candidates should result in None (null category_id)
+        assert result is None, \
+            "category_id should be None when no candidates exist in database"
+
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_null_id_on_match_failure_below_threshold_category():
+    """
+    **Validates: Requirements 6.3**
+    
+    Specific test: When category similarity score is below 0.80 threshold, category_id should be None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Candidates exist but similarity will be below threshold
+    mock_rows = [{'id': uuid4(), 'name': 'Completely Different Category'}]
+    mock_conn.fetch = AsyncMock(return_value=mock_rows)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+            # Simulate score below threshold - find_best_match returns None
+            mock_find_best.return_value = None
+            
+            result = await matcher.match_category("Mobile Phone")
+            
+            # Property: Below threshold should result in None (null category_id)
+            assert result is None, \
+                "category_id should be None when similarity score is below threshold"
+
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_null_id_on_match_failure_below_threshold_brand():
+    """
+    **Validates: Requirements 6.3**
+    
+    Specific test: When brand similarity score is below 0.80 threshold, brand_id should be None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Candidates exist but similarity will be below threshold
+    category_id = uuid4()
+    mock_rows = [{'id': uuid4(), 'name': 'Completely Different Brand'}]
+    mock_conn.fetch = AsyncMock(return_value=mock_rows)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+            # Simulate score below threshold - find_best_match returns None
+            mock_find_best.return_value = None
+            
+            result = await matcher.match_brand("Apple", category_id)
+            
+            # Property: Below threshold should result in None (null brand_id)
+            assert result is None, \
+                "brand_id should be None when similarity score is below threshold"
+
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_null_id_on_match_failure_below_threshold_model():
+    """
+    **Validates: Requirements 6.3**
+    
+    Specific test: When model similarity score is below 0.75 threshold, model_id should be None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Candidates exist but similarity will be below threshold
+    category_id = uuid4()
+    brand_id = uuid4()
+    mock_rows = [{'id': uuid4(), 'name': 'Completely Different Model'}]
+    mock_conn.fetch = AsyncMock(return_value=mock_rows)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+            # Simulate score below threshold - find_best_match returns None
+            mock_find_best.return_value = None
+            
+            result = await matcher.match_model("iPhone 14 Pro", category_id, brand_id)
+            
+            # Property: Below threshold should result in None (null model_id)
+            assert result is None, \
+                "model_id should be None when similarity score is below threshold"
+
+
+# Feature: database-matching-integration, Property 18: Null ID on Match Failure
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_null_id_on_match_failure_hierarchical_dependency():
+    """
+    **Validates: Requirements 6.3**
+    
+    Specific test: When hierarchical dependencies are not met (e.g., no category_id),
+    dependent matches should return None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Test brand matching without category_id
+    brand_result = await matcher.match_brand("Apple", None)
+    
+    # Property: Without category_id, brand_id should be None
+    assert brand_result is None, \
+        "brand_id should be None when category_id is not provided"
+    
+    # Test model matching without category_id
+    model_result = await matcher.match_model("iPhone 14 Pro", None, uuid4())
+    
+    # Property: Without category_id, model_id should be None
+    assert model_result is None, \
+        "model_id should be None when category_id is not provided"
+    
+    # Test model matching without brand_id
+    model_result = await matcher.match_model("iPhone 14 Pro", uuid4(), None)
+    
+    # Property: Without brand_id, model_id should be None
+    assert model_result is None, \
+        "model_id should be None when brand_id is not provided"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@given(
+    category_text=st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126)),
+    brand_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    model_text=st.one_of(st.none(), st.text(min_size=1, max_size=100, alphabet=st.characters(min_codepoint=32, max_codepoint=126))),
+    category_found=st.booleans(),
+    brand_found=st.booleans(),
+    category_score=st.floats(min_value=0.80, max_value=1.0),
+    brand_score=st.floats(min_value=0.80, max_value=1.0),
+    model_score=st.floats(min_value=0.75, max_value=1.0)
+)
+@settings(max_examples=100)
+@pytest.mark.property_test
+async def test_hierarchical_matching_dependencies(
+    category_text: str,
+    brand_text: Optional[str],
+    model_text: Optional[str],
+    category_found: bool,
+    brand_found: bool,
+    category_score: float,
+    brand_score: float,
+    model_score: float
+):
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    For any matching operation, brand matching should only execute when category_id 
+    is not null, and model matching should only execute when both category_id and 
+    brand_id are not null.
+    
+    This property verifies the hierarchical dependency chain:
+    - Category matching always executes (no dependencies)
+    - Brand matching requires category_id to be present
+    - Model matching requires both category_id and brand_id to be present
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Setup mock category data
+    category_id = uuid4() if category_found else None
+    category_rows = [{'id': category_id, 'name': 'TestCategory'}] if category_found else []
+    
+    # Setup mock brand data
+    brand_id = uuid4() if brand_found else None
+    brand_rows = [{'id': brand_id, 'name': 'TestBrand'}] if brand_found else []
+    
+    # Setup mock model data
+    model_id = uuid4()
+    model_rows = [{'id': model_id, 'name': 'TestModel'}]
+    
+    # Track which queries were executed
+    query_calls = []
+    
+    async def mock_fetch(query, *params):
+        """Track query execution and return appropriate results"""
+        query_lower = query.lower()
+        query_calls.append(query_lower)
+        
+        if 'device_category' in query_lower:
+            return category_rows
+        elif 'device_brand' in query_lower or 'category_brand' in query_lower:
+            return brand_rows
+        elif 'device_model' in query_lower:
+            return model_rows
+        return []
+    
+    mock_conn.fetch = AsyncMock(side_effect=mock_fetch)
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        with patch('app.services.database_matcher.FuzzyMatcher.find_best_match') as mock_find_best:
+            # Setup mock responses for fuzzy matching
+            def mock_find_best_side_effect(query, candidates, threshold):
+                if not candidates:
+                    return None
+                
+                # Determine which entity we're matching based on candidates
+                if candidates and 'TestCategory' in str(candidates):
+                    if category_found and category_score >= threshold:
+                        return ({'id': category_id, 'name': 'TestCategory'}, category_score)
+                    return None
+                elif candidates and 'TestBrand' in str(candidates):
+                    if brand_found and brand_score >= threshold:
+                        return ({'id': brand_id, 'name': 'TestBrand'}, brand_score)
+                    return None
+                elif candidates and 'TestModel' in str(candidates):
+                    if model_score >= threshold:
+                        return ({'id': model_id, 'name': 'TestModel'}, model_score)
+                    return None
+                return None
+            
+            mock_find_best.side_effect = mock_find_best_side_effect
+            
+            # Execute the hierarchical matching through match_device
+            result = await matcher.match_device(category_text, brand_text, model_text)
+            
+            # Property 1: Category matching always executes (no dependencies)
+            # Verify category query was attempted
+            category_queries = [q for q in query_calls if 'device_category' in q]
+            assert len(category_queries) > 0, \
+                "Category query should always be executed (no dependencies)"
+            
+            # Property 2: Brand matching should only execute when category_id is not null
+            brand_queries = [q for q in query_calls if 'device_brand' in q or 'category_brand' in q]
+            
+            if brand_text:
+                if category_found and category_score >= 0.80:
+                    # Category was found, so brand query should have been executed
+                    assert len(brand_queries) > 0, \
+                        "Brand query should execute when category_id is not null and brand_text is provided"
+                    
+                    # Verify the result reflects the hierarchical dependency
+                    assert result.category is not None, \
+                        "Category should be found when category_found=True and score >= threshold"
+                    
+                    if brand_found and brand_score >= 0.80:
+                        assert result.brand is not None, \
+                            "Brand should be found when brand_found=True and score >= threshold"
+                    else:
+                        assert result.brand is None, \
+                            "Brand should be None when brand_found=False or score < threshold"
+                else:
+                    # Category was not found, so brand query should NOT have been executed
+                    assert len(brand_queries) == 0, \
+                        "Brand query should NOT execute when category_id is null"
+                    
+                    assert result.brand is None, \
+                        "Brand should be None when category is not found"
+            else:
+                # No brand_text provided, so brand query should not execute
+                assert len(brand_queries) == 0, \
+                    "Brand query should NOT execute when brand_text is not provided"
+                assert result.brand is None, \
+                    "Brand should be None when brand_text is not provided"
+            
+            # Property 3: Model matching should only execute when both category_id and brand_id are not null
+            model_queries = [q for q in query_calls if 'device_model' in q]
+            
+            if model_text:
+                if (category_found and category_score >= 0.80 and 
+                    brand_text and brand_found and brand_score >= 0.80):
+                    # Both category and brand were found, so model query should have been executed
+                    assert len(model_queries) > 0, \
+                        "Model query should execute when both category_id and brand_id are not null and model_text is provided"
+                    
+                    # Verify the result reflects the hierarchical dependency
+                    assert result.category is not None, \
+                        "Category should be found"
+                    assert result.brand is not None, \
+                        "Brand should be found"
+                    
+                    if model_score >= 0.75:
+                        assert result.model is not None, \
+                            "Model should be found when model score >= threshold"
+                    else:
+                        assert result.model is None, \
+                            "Model should be None when model score < threshold"
+                else:
+                    # Either category or brand was not found, so model query should NOT have been executed
+                    assert len(model_queries) == 0, \
+                        "Model query should NOT execute when category_id or brand_id is null"
+                    
+                    assert result.model is None, \
+                        "Model should be None when category or brand is not found"
+            else:
+                # No model_text provided, so model query should not execute
+                assert len(model_queries) == 0, \
+                    "Model query should NOT execute when model_text is not provided"
+                assert result.model is None, \
+                    "Model should be None when model_text is not provided"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_hierarchical_dependencies_brand_requires_category():
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    Specific test: Brand matching should return None when category_id is None,
+    regardless of whether brand_text is provided.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Test with None category_id
+    result = await matcher.match_brand("Apple", None)
+    
+    # Property: Brand matching requires category_id
+    assert result is None, \
+        "Brand matching should return None when category_id is None"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_hierarchical_dependencies_model_requires_category():
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    Specific test: Model matching should return None when category_id is None,
+    regardless of whether brand_id and model_text are provided.
+    """
+    matcher = DatabaseMatcher()
+    
+    brand_id = uuid4()
+    
+    # Test with None category_id
+    result = await matcher.match_model("iPhone 14 Pro", None, brand_id)
+    
+    # Property: Model matching requires category_id
+    assert result is None, \
+        "Model matching should return None when category_id is None"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_hierarchical_dependencies_model_requires_brand():
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    Specific test: Model matching should return None when brand_id is None,
+    regardless of whether category_id and model_text are provided.
+    """
+    matcher = DatabaseMatcher()
+    
+    category_id = uuid4()
+    
+    # Test with None brand_id
+    result = await matcher.match_model("iPhone 14 Pro", category_id, None)
+    
+    # Property: Model matching requires brand_id
+    assert result is None, \
+        "Model matching should return None when brand_id is None"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_hierarchical_dependencies_model_requires_both():
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    Specific test: Model matching should return None when either category_id or brand_id is None.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Test with both None
+    result = await matcher.match_model("iPhone 14 Pro", None, None)
+    
+    # Property: Model matching requires both category_id and brand_id
+    assert result is None, \
+        "Model matching should return None when both category_id and brand_id are None"
+
+
+# Feature: database-matching-integration, Property 11: Hierarchical Matching Dependencies
+@pytest.mark.asyncio
+@pytest.mark.property_test
+async def test_hierarchical_dependencies_match_device_flow():
+    """
+    **Validates: Requirements 3.6, 4.6**
+    
+    Integration test: Verify the complete hierarchical flow through match_device.
+    When category is not found, brand and model should not be attempted.
+    """
+    matcher = DatabaseMatcher()
+    
+    # Mock database connection manager
+    mock_conn = MagicMock()
+    
+    # Setup: Category query returns empty (no match)
+    mock_conn.fetch = AsyncMock(return_value=[])
+    
+    # Create async context manager mock
+    mock_acquire_context = AsyncMock()
+    mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+    
+    # Mock pool
+    mock_pool = MagicMock()
+    mock_pool.acquire = MagicMock(return_value=mock_acquire_context)
+    
+    with patch('app.services.database_matcher.db_manager') as mock_db_manager:
+        mock_db_manager.is_available.return_value = True
+        mock_db_manager.pool = mock_pool
+        
+        # Execute match_device with all three texts provided
+        result = await matcher.match_device("Mobile Phone", "Apple", "iPhone 14 Pro")
+        
+        # Property: When category is not found, brand and model should also be None
+        assert result.category is None, \
+            "Category should be None when no match found"
+        assert result.brand is None, \
+            "Brand should be None when category is not found (hierarchical dependency)"
+        assert result.model is None, \
+            "Model should be None when category is not found (hierarchical dependency)"
+        
+        # Verify only category query was executed (not brand or model)
+        # The fetch should have been called only once for category
+        assert mock_conn.fetch.call_count == 1, \
+            "Only category query should be executed when category is not found"

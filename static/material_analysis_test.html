@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Material Analysis Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.show {
+            display: block;
+        }
+        
+        .result h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .materials-grid {
+            display: grid;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .material-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .material-card.precious {
+            border-left-color: #ffd700;
+        }
+        
+        .material-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .material-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .detail-label {
+            font-weight: 500;
+        }
+        
+        .material-source {
+            grid-column: 1 / -1;
+            margin-top: 4px;
+            padding: 6px 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #555;
+        }
+        
+        .material-source strong {
+            color: #667eea;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .badge.precious {
+            background: #ffd700;
+            color: #333;
+        }
+        
+        .badge.base {
+            background: #e0e0e0;
+            color: #666;
+        }
+        
+        .error {
+            background: #fee;
+            border-left: 4px solid #f44;
+            padding: 15px;
+            border-radius: 8px;
+            color: #c33;
+        }
+        
+        .success {
+            background: #efe;
+            border-left: 4px solid #4c4;
+            padding: 15px;
+            border-radius: 8px;
+            color: #363;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .metadata {
+            margin-top: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 Material Analysis Test Interface</h1>
+            <p>Analyze recyclable materials in electronic devices</p>
+        </div>
+        
+        <div class="content">
+            <form id="analysisForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="brandId">Brand ID</label>
+                        <input type="text" id="brandId" value="BR001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="brandName">Brand Name</label>
+                        <input type="text" id="brandName" value="Samsung" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="categoryId">Category ID</label>
+                        <input type="text" id="categoryId" value="CAT001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="categoryName">Category Name</label>
+                        <input type="text" id="categoryName" value="Smartphone" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modelId">Model ID</label>
+                        <input type="text" id="modelId" value="MOD001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="modelName">Model Name</label>
+                        <input type="text" id="modelName" value="Galaxy S21" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="country">Country</label>
+                    <input type="text" id="country" value="India" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Description (Optional)</label>
+                    <textarea id="description" placeholder="Additional context about the device...">Material recovery estimation from the device based on internal components.</textarea>
+                </div>
+                
+                <button type="submit" id="submitBtn">Analyze Materials</button>
+            </form>
+            
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('analysisForm');
+        const resultDiv = document.getElementById('result');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Analyzing...';
+            resultDiv.className = 'result show';
+            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing materials...</p></div>';
+            
+            // Collect form data
+            const requestData = {
+                brand_id: document.getElementById('brandId').value,
+                brand_name: document.getElementById('brandName').value,
+                category_id: document.getElementById('categoryId').value,
+                category_name: document.getElementById('categoryName').value,
+                model_id: document.getElementById('modelId').value,
+                model_name: document.getElementById('modelName').value,
+                country: document.getElementById('country').value,
+                description: document.getElementById('description').value || undefined
+            };
+            
+            try {
+                const response = await fetch('/api/v1/analyze-materials', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'XBZLmUDmGb0TxCGwkjPoHPAIuXPYTy0i5iOQ5HOR3Pk'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displaySuccess(data);
+                } else {
+                    displayError(data.error);
+                }
+            } catch (error) {
+                displayError({ code: 'NETWORK_ERROR', message: error.message });
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Analyze Materials';
+            }
+        });
+        
+        function displaySuccess(data) {
+            const materials = data.data.materials;
+            const metadata = data.data.metadata;
+            
+            let html = `
+                <div class="success">
+                    <strong>✓ Analysis Complete</strong><br>
+                    Processing Time: ${data.processingTimeMs}ms
+                </div>
+                
+                <h3>Device Information</h3>
+                <div class="metadata">
+                    <strong>${data.data.brand.name}</strong> ${data.data.model.name} (${data.data.category.name})<br>
+                    Country: ${data.data.country}<br>
+                    ${data.data.analysisDescription}
+                </div>
+                
+                <h3>Materials Found (${materials.length})</h3>
+                <div class="materials-grid">
+            `;
+            
+            materials.forEach(material => {
+                const badgeClass = material.isPrecious ? 'precious' : 'base';
+                const cardClass = material.isPrecious ? 'precious' : '';
+                const foundIn = material.foundIn || 'Unknown component';
+                
+                html += `
+                    <div class="material-card ${cardClass}">
+                        <div class="material-name">
+                            ${material.materialName}
+                            <span class="badge ${badgeClass}">${material.isPrecious ? 'Precious' : 'Base'}</span>
+                        </div>
+                        <div class="material-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Quantity:</span>
+                                <span>${material.estimatedQuantityGrams.toFixed(3)} g</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Rate:</span>
+                                <span>${material.marketRatePerGram.toFixed(2)} ${material.currency}/g</span>
+                            </div>
+                            <div class="material-source">
+                                <strong>Found in:</strong> ${foundIn}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+                <div class="metadata">
+                    <strong>Analysis Metadata</strong><br>
+                    Model: ${metadata.llmModel}<br>
+                    Timestamp: ${new Date(metadata.analysisTimestamp).toLocaleString()}
+                </div>
+            `;
+            
+            resultDiv.innerHTML = html;
+        }
+        
+        function displayError(error) {
+            resultDiv.innerHTML = `
+                <div class="error">
+                    <strong>✗ Error: ${error.code}</strong><br>
+                    ${error.message}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

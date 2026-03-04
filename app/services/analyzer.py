@@ -235,6 +235,7 @@ class AnalyzerService:
             model_pick = pass2_result.get("model") # Fallback from pass 2
             model_match = None
             models = []
+            model_uncertainty_reason = None  # Initialize to avoid UnboundLocalError
             
             if category_match and brand_match:
                 models = await database_matcher.get_models_for_brand_category(
@@ -313,7 +314,7 @@ class AnalyzerService:
             )
             
             # Add model uncertainty reason if available
-            if 'model_uncertainty_reason' in locals() and model_uncertainty_reason:
+            if model_uncertainty_reason:
                 enhanced_fields["model_uncertainty_reason"] = model_uncertainty_reason
 
             db_status = database_matcher._determine_status(

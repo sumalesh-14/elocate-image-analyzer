@@ -108,7 +108,8 @@ class AnalyzerService:
             # ------------------------------------------------------------------
             try:
                 categories = await database_matcher.get_all_categories()
-                olog.log_pass1_start(len(categories))
+                category_names = [c['name'] for c in categories]
+                olog.log_pass1_start(len(categories), category_names)
 
                 pass1_result = await llm_service.analyze_pass1_category(
                     file_bytes, categories
@@ -188,7 +189,8 @@ class AnalyzerService:
                 else:
                     brands = []
 
-                olog.log_pass2_start(resolved_category, len(brands))
+                brand_names = [b['name'] for b in brands]
+                olog.log_pass2_start(resolved_category, len(brands), brand_names)
 
                 pass2_result = await llm_service.analyze_pass2_brand_model(
                     file_bytes, resolved_category, brands, models=[]
@@ -242,7 +244,8 @@ class AnalyzerService:
                     brand_match.id, category_match.id
                 )
                 
-                olog.log_pass3_start(brand_match.name, len(models))
+                model_names = [m['name'] for m in models]
+                olog.log_pass3_start(brand_match.name, len(models), model_names)
                 
                 try:
                     pass3_result = await llm_service.analyze_pass3_model(

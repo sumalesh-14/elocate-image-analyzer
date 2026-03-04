@@ -81,8 +81,14 @@ def log_llm_switched(failed_llm: str, reason: str, next_llm: str) -> None:
     _p(f"  {_YELLOW}⚠️   {failed_llm} failed ({reason}). Switching to {next_llm}...{_RESET}")
 
 
-def log_pass1_start(num_categories: int) -> None:
+def log_pass1_start(num_categories: int, category_names: list = None) -> None:
     _section("🧠", f"PASS 1 — Category Identification  ({num_categories} DB categories offered)")
+    if category_names:
+        _p(f"  {_DIM}Offering categories:{_RESET}")
+        for i, name in enumerate(category_names[:10], 1):  # Show first 10
+            _p(f"    {_DIM}{i}.{_RESET} {name}")
+        if len(category_names) > 10:
+            _p(f"    {_DIM}... and {len(category_names) - 10} more{_RESET}")
 
 
 def log_pass1_result(
@@ -116,26 +122,38 @@ def log_category_failed(raw_pick: str) -> None:
     _p(f"     {_DIM}(continuing with raw text — no DB ID){_RESET}")
 
 
-def log_pass2_start(category: str, num_brands: int) -> None:
+def log_pass2_start(category: str, num_brands: int, brand_names: list = None) -> None:
     _section(
         "🏷️ ",
         f"PASS 2 — Brand & Model Identification  ({num_brands} brands offered)",
         color=_MAGENTA,
     )
     _field("For category", category)
+    if brand_names:
+        _p(f"  {_DIM}Offering brands:{_RESET}")
+        for i, name in enumerate(brand_names[:10], 1):  # Show first 10
+            _p(f"    {_DIM}{i}.{_RESET} {name}")
+        if len(brand_names) > 10:
+            _p(f"    {_DIM}... and {len(brand_names) - 10} more{_RESET}")
 
 
 def log_pass2_result(brand_raw: Optional[str]) -> None:
     _field("Brand (raw)", brand_raw or "null")
 
 
-def log_pass3_start(brand: str, num_models: int) -> None:
+def log_pass3_start(brand: str, num_models: int, model_names: list = None) -> None:
     _section(
         "📱",
         f"PASS 3 — Model Identification  ({num_models} models offered)",
         color=_YELLOW,
     )
     _field("For brand", brand)
+    if model_names:
+        _p(f"  {_DIM}Offering models:{_RESET}")
+        for i, name in enumerate(model_names[:10], 1):  # Show first 10
+            _p(f"    {_DIM}{i}.{_RESET} {name}")
+        if len(model_names) > 10:
+            _p(f"    {_DIM}... and {len(model_names) - 10} more{_RESET}")
 
 
 def log_pass3_result(model_raw: Optional[str], uncertainty_reason: Optional[str] = None) -> None:

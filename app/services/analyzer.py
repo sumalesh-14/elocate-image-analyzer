@@ -379,6 +379,7 @@ class AnalyzerService:
                     "category_new": category_match.is_new if category_match else False,
                     "brand_new": brand_match.is_new if brand_match else False,
                     "model_new": model_match.is_new if model_match else False,
+                    "model_uncertainty_reason": device_data.model_uncertainty_reason if hasattr(device_data, 'model_uncertainty_reason') else None,
                 }
             )
 

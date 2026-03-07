@@ -179,18 +179,45 @@ Device Information:
 Your task:
 1. Identify ALL recyclable materials in this device (precious metals, base metals, rare earth elements, etc.)
 2. Estimate the quantity of each material in grams
-3. Provide the current market rate per gram for each material in the local currency of the specified country
+3. Provide the REALISTIC E-WASTE RECYCLING/SCRAP market rate per gram (NOT pure commodity prices)
 4. Specify WHERE each material is typically found in the device (e.g., "Circuit board", "Battery", "Display", "Motor", "Casing")
 5. Be comprehensive - include materials like: Gold, Silver, Copper, Aluminum, Lithium, Cobalt, Palladium, Platinum, Tantalum, Neodymium, etc.
 
-IMPORTANT INSTRUCTIONS:
+CRITICAL PRICING INSTRUCTIONS - USE E-WASTE SCRAP RATES:
+For India (INR), use these REALISTIC SCRAP/RECYCLING rates per gram:
+
+PRECIOUS METALS (use 70-80% of pure market rate due to recovery costs):
+- Gold: ₹4,500-5,000/gram (not ₹6,500)
+- Silver: ₹50-60/gram (not ₹750)
+- Platinum: ₹2,000-2,500/gram (not ₹5,000)
+- Palladium: ₹3,500-4,000/gram (not ₹6,000)
+
+BASE METALS (use scrap rates, typically per kg converted to per gram):
+- Copper scrap: ₹0.40-0.50/gram (₹400-500/kg)
+- Aluminum scrap: ₹0.15-0.18/gram (₹150-180/kg)
+- Steel/Iron scrap: ₹0.03-0.05/gram (₹30-50/kg)
+
+BATTERY MATERIALS (e-waste recovery rates):
+- Lithium (battery grade scrap): ₹80-120/gram
+- Cobalt (battery scrap): ₹300-400/gram
+- Nickel (battery scrap): ₹150-200/gram
+
+RARE EARTH ELEMENTS (recovery rates):
+- Neodymium: ₹100-150/gram
+- Praseodymium: ₹120-180/gram
+- Tantalum: ₹50-80/gram
+
+For other countries, adjust proportionally based on local scrap market rates.
+
+IMPORTANT COMPOSITION GUIDELINES:
 - Provide realistic estimates based on typical device composition
-- Use current market rates for the specified country
 - Include both precious metals (gold, silver, platinum, palladium) and base metals (copper, aluminum)
 - For batteries, include lithium, cobalt, and other battery materials
 - For circuit boards, include gold, silver, copper, and rare earth elements
 - Mark materials as "precious" if they are precious metals (gold, silver, platinum, palladium)
 - Specify the component/part where each material is found (be specific: "Lithium-ion battery", "Main circuit board", "Display panel", "Vibration motor", "Aluminum frame", etc.)
+- Remember: rates should reflect SCRAP/RECYCLING value, not pure commodity prices
+- Account for recovery efficiency (typically 60-80% of theoretical maximum)
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, no additional text):
 {
@@ -199,15 +226,15 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
       "materialName": "Gold",
       "isPrecious": true,
       "estimatedQuantityGrams": 0.034,
-      "marketRatePerGram": 6500,
+      "marketRatePerGram": 4800,
       "currency": "INR",
       "foundIn": "Circuit board and connectors"
     }
   ],
-  "analysisDescription": "Brief description of the analysis methodology"
+  "analysisDescription": "Brief description of the analysis methodology including recovery efficiency considerations"
 }
 
-Ensure all numeric values are realistic and based on actual device composition data."""
+Ensure all numeric values are realistic and based on actual e-waste recycling market data, not pure commodity prices."""
         
         return prompt
     

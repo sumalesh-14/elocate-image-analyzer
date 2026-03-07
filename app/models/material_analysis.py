@@ -23,6 +23,8 @@ class MaterialAnalysisRequest(BaseModel):
         model_name: Model name
         country: Country code or name for market rate lookup
         description: Optional additional context about the device
+        device_condition: Device condition code (EXCELLENT, GOOD, FAIR, POOR)
+        condition_notes: Detailed notes about device condition, defects, or issues
     """
     brand_id: str = Field(..., description="Brand identifier")
     brand_name: str = Field(..., description="Brand name")
@@ -32,6 +34,19 @@ class MaterialAnalysisRequest(BaseModel):
     model_name: str = Field(..., description="Model name")
     country: str = Field(..., description="Country for market rate lookup")
     description: Optional[str] = Field(None, description="Additional device context")
+    device_condition: Optional[Literal["EXCELLENT", "GOOD", "FAIR", "POOR"]] = Field(
+        None,
+        alias="deviceCondition",
+        description="Device condition: EXCELLENT (pristine/working), GOOD (fair/minor issues), FAIR (broken/damaged), POOR (scrap/parts)"
+    )
+    condition_notes: Optional[str] = Field(
+        None,
+        alias="conditionNotes",
+        description="Detailed notes about device condition, defects, or issues"
+    )
+    
+    class Config:
+        populate_by_name = True
     
     @field_validator('brand_name', 'category_name', 'model_name', 'country')
     @classmethod
@@ -100,6 +115,76 @@ class ModelInfo(BaseModel):
     name: str = Field(..., description="Model name")
 
 
+class PlatformLink(BaseModel):
+    """E-commerce or official platform link with icon."""
+    platform_name: str = Field(
+        ...,
+        alias="platformName",
+        description="Platform name (e.g., Flipkart, Amazon, Snapdeal)"
+    )
+    link: str = Field(..., description="Product/search link URL")
+    icon: Optional[str] = Field(None, description="Platform logo/icon URL")
+    display_order: Optional[int] = Field(
+        None,
+        alias="displayOrder",
+        description="Display order priority (lower number = higher priority)"
+    )
+    
+    class Config:
+        populate_by_name = True
+
+
+class DevicePricing(BaseModel):
+    """Device pricing information from e-commerce platforms."""
+    current_market_price: Optional[float] = Field(
+        None,
+        alias="currentMarketPrice",
+        description="Current market price of the device"
+    )
+    currency: Optional[str] = Field(None, description="Currency code")
+    platform_links: List[PlatformLink] = Field(
+        default_factory=list,
+        alias="platformLinks",
+        description="List of e-commerce and official platform links with icons"
+    )
+    
+    class Config:
+        populate_by_name = True
+
+
+class RecyclingEstimate(BaseModel):
+    """Recycling value estimation."""
+    total_material_value: float = Field(
+        ...,
+        alias="totalMaterialValue",
+        description="Total value of all materials"
+    )
+    suggested_recycling_price: float = Field(
+        ...,
+        alias="suggestedRecyclingPrice",
+        description="Suggested price to offer for recycling (accounts for condition and processing costs)"
+    )
+    suggested_buyback_price: Optional[float] = Field(
+        None,
+        alias="suggestedBuybackPrice",
+        description="Suggested buyback price if device is functional (based on condition and market depreciation)"
+    )
+    condition_impact: Optional[str] = Field(
+        None,
+        alias="conditionImpact",
+        description="How device condition affects the pricing"
+    )
+    currency: str = Field(..., description="Currency code")
+    price_breakdown: Optional[str] = Field(
+        None,
+        alias="priceBreakdown",
+        description="Explanation of pricing calculation"
+    )
+    
+    class Config:
+        populate_by_name = True
+
+
 class AnalysisMetadata(BaseModel):
     """Metadata about the analysis process."""
     llm_model: str = Field(..., alias="llmModel", description="LLM model used")
@@ -123,6 +208,8 @@ class MaterialAnalysisData(BaseModel):
         country: Country for market rates
         analysis_description: Description of the analysis
         materials: List of materials found in the device
+        device_pricing: Current market pricing and product links
+        recycling_estimate: Recycling value estimation
         metadata: Analysis metadata
     """
     brand: BrandInfo = Field(..., description="Brand information")
@@ -135,6 +222,16 @@ class MaterialAnalysisData(BaseModel):
         description="Analysis description"
     )
     materials: List[MaterialData] = Field(..., description="List of materials")
+    device_pricing: Optional[DevicePricing] = Field(
+        None,
+        alias="devicePricing",
+        description="Current market pricing and product links"
+    )
+    recycling_estimate: RecyclingEstimate = Field(
+        ...,
+        alias="recyclingEstimate",
+        description="Recycling value estimation"
+    )
     metadata: AnalysisMetadata = Field(..., description="Analysis metadata")
     
     class Config:

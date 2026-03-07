@@ -21,10 +21,14 @@ from app.models.material_analysis import (
     BrandInfo,
     CategoryInfo,
     ModelInfo,
-    AnalysisMetadata
+    AnalysisMetadata,
+    RecyclingEstimate,
+    DevicePricing
 )
 from app.services.analyzer import analyzer_service, AnalysisError
 from app.services.material_analyzer import material_analyzer_service, MaterialAnalysisError
+from app.services.device_pricing import device_pricing_service
+from app.services.pricing_calculator import pricing_calculator
 from app.services.llm_router import llm_service
 from app.api.middleware import limiter
 
@@ -304,12 +308,48 @@ async def analyze_materials(
     
     try:
         # Analyze materials using LLM
-        materials, analysis_description, model_used = await material_analyzer_service.analyze_materials(
+        materials, analysis_description, model_used, total_material_value = await material_analyzer_service.analyze_materials(
             analysis_request
+        )
+        
+        # Fetch device pricing (optional, non-blocking)
+        device_pricing = None
+        market_price = None
+        try:
+            device_pricing = await device_pricing_service.get_device_pricing(
+                brand_name=analysis_request.brand_name,
+                model_name=analysis_request.model_name,
+                category_name=analysis_request.category_name,
+                country=analysis_request.country
+            )
+            if device_pricing and device_pricing.current_market_price:
+                market_price = device_pricing.current_market_price
+        except Exception as e:
+            logger.warning(f"Failed to fetch device pricing: {str(e)}")
+        
+        # Get currency from first material (all should have same currency)
+        currency = materials[0].currency if materials else "INR"
+        
+        # Calculate pricing based on condition using pricing calculator
+        pricing_recommendation = pricing_calculator.get_pricing_recommendation(
+            total_material_value=total_material_value,
+            market_price=market_price,
+            device_condition=analysis_request.device_condition,
+            device_age_years=None  # TODO: Calculate from model release date if available
         )
         
         # Calculate processing time
         processing_time = int((time.time() - start_time) * 1000)
+        
+        # Build recycling estimate with condition-based pricing
+        recycling_estimate = RecyclingEstimate(
+            totalMaterialValue=round(total_material_value, 2),
+            suggestedRecyclingPrice=pricing_recommendation["recycling_price"],
+            suggestedBuybackPrice=pricing_recommendation["buyback_price"],
+            conditionImpact=pricing_recommendation["condition_impact"],
+            currency=currency,
+            priceBreakdown=pricing_recommendation["price_breakdown"]
+        )
         
         # Build response data
         response_data = MaterialAnalysisData(
@@ -328,6 +368,8 @@ async def analyze_materials(
             country=analysis_request.country,
             analysisDescription=analysis_description,
             materials=materials,
+            devicePricing=device_pricing,
+            recyclingEstimate=recycling_estimate,
             metadata=AnalysisMetadata(
                 llmModel=model_used
             )

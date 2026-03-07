@@ -1,0 +1,219 @@
+{
+  "backend_condition_codes": {
+    "EXCELLENT": {
+      "label": "Pristine / Working",
+      "description": "Fully functional, no damage",
+      "recycling_multiplier": "65%",
+      "buyback_multiplier": "70%"
+    },
+    "GOOD": {
+      "label": "Fair / Minor Issues",
+      "description": "Working with cosmetic wear",
+      "recycling_multiplier": "55%",
+      "buyback_multiplier": "55%"
+    },
+    "FAIR": {
+      "label": "Broken / Damaged",
+      "description": "Powers on but partial functionality",
+      "recycling_multiplier": "45%",
+      "buyback_multiplier": "35%"
+    },
+    "POOR": {
+      "label": "Scrap / Parts",
+      "description": "Does not power on, non-functional",
+      "recycling_multiplier": "30%",
+      "buyback_multiplier": "Not offered"
+    }
+  },
+  "test_scenarios": [
+    {
+      "name": "EXCELLENT - Pristine/Working",
+      "description": "Like-new MacBook, fully functional, no damage",
+      "request": {
+        "brand_id": "mock",
+        "brand_name": "Apple",
+        "category_id": "mock",
+        "category_name": "Laptop",
+        "model_id": "test-123",
+        "model_name": "MacBook Pro 16 (M4)",
+        "country": "IN",
+        "deviceCondition": "EXCELLENT",
+        "conditionNotes": "Pristine condition, no visible wear, battery health 98%, all features working perfectly"
+      },
+      "expected_pricing": {
+        "recycling_multiplier": "65%",
+        "buyback_multiplier": "70%",
+        "recommendation": "Buyback is significantly better value than recycling"
+      }
+    },
+    {
+      "name": "GOOD - Fair/Minor Issues",
+      "description": "Working MacBook with cosmetic wear",
+      "request": {
+        "brand_id": "mock",
+        "brand_name": "Apple",
+        "category_id": "mock",
+        "category_name": "Laptop",
+        "model_id": "test-123",
+        "model_name": "MacBook Pro 16 (M4)",
+        "country": "IN",
+        "deviceCondition": "GOOD",
+        "conditionNotes": "Minor scratches on bottom case, slight keyboard wear, battery 85%, all functions working"
+      },
+      "expected_pricing": {
+        "recycling_multiplier": "55%",
+        "buyback_multiplier": "55%",
+        "recommendation": "Buyback recommended if device is still usable"
+      }
+    },
+    {
+      "name": "FAIR - Broken/Damaged",
+      "description": "Powers on but partial functionality",
+      "request": {
+        "brand_id": "mock",
+        "brand_name": "Apple",
+        "category_id": "mock",
+        "category_name": "Laptop",
+        "model_id": "test-123",
+        "model_name": "MacBook Pro 16 (M4)",
+        "country": "IN",
+        "deviceCondition": "FAIR",
+        "conditionNotes": "Powers on, screen has minor cracks, webcam not working, battery 60%, one USB port damaged"
+      },
+      "expected_pricing": {
+        "recycling_multiplier": "45%",
+        "buyback_multiplier": "35%",
+        "recommendation": "Consider repair cost vs buyback/recycling value"
+      }
+    },
+    {
+      "name": "POOR - Scrap/Parts",
+      "description": "Does not power on, non-functional",
+      "request": {
+        "brand_id": "mock",
+        "brand_name": "Apple",
+        "category_id": "mock",
+        "category_name": "Laptop",
+        "model_id": "test-123",
+        "model_name": "MacBook Pro 16 (M4)",
+        "country": "IN",
+        "deviceCondition": "POOR",
+        "conditionNotes": "Does not power on, suspected motherboard failure, liquid damage, heavy physical damage"
+      },
+      "expected_pricing": {
+        "recycling_multiplier": "30%",
+        "buyback_multiplier": "Not offered",
+        "recommendation": "Device is non-functional. Best suited for material recycling and parts recovery."
+      }
+    },
+    {
+      "name": "No Condition Specified",
+      "description": "Default pricing when condition is not provided",
+      "request": {
+        "brand_id": "mock",
+        "brand_name": "Apple",
+        "category_id": "mock",
+        "category_name": "Laptop",
+        "model_id": "test-123",
+        "model_name": "MacBook Pro 16 (M4)",
+        "country": "IN"
+      },
+      "expected_pricing": {
+        "recycling_multiplier": "50%",
+        "buyback_multiplier": "Not calculated without condition",
+        "recommendation": "Standard recycling price applied. Provide device condition for more accurate pricing."
+      }
+    }
+  ],
+  "example_calculations": {
+    "macbook_pro_16_m4": {
+      "material_value": 19797.00,
+      "market_price": 249990.00,
+      "currency": "INR",
+      "scenarios": {
+        "EXCELLENT": {
+          "recycling_price": 12868.05,
+          "buyback_price": 174993.00,
+          "ratio": "13.6x",
+          "recommendation": "Buyback is 13.6x better than recycling"
+        },
+        "GOOD": {
+          "recycling_price": 10888.35,
+          "buyback_price": 137494.50,
+          "ratio": "12.6x",
+          "recommendation": "Buyback is 12.6x better than recycling"
+        },
+        "FAIR": {
+          "recycling_price": 8908.65,
+          "buyback_price": 87496.50,
+          "ratio": "9.8x",
+          "recommendation": "Buyback is 9.8x better than recycling"
+        },
+        "POOR": {
+          "recycling_price": 5939.10,
+          "buyback_price": null,
+          "ratio": "N/A",
+          "recommendation": "Non-functional. Recycle for materials only."
+        },
+        "UNSPECIFIED": {
+          "recycling_price": 9898.50,
+          "buyback_price": null,
+          "ratio": "N/A",
+          "recommendation": "Standard rate. Provide condition for accurate pricing."
+        }
+      }
+    }
+  },
+  "api_request_example": {
+    "url": "POST http://localhost:8000/api/v1/analyze-materials",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "brand_id": "mock",
+      "brand_name": "Apple",
+      "category_id": "mock",
+      "category_name": "Laptop",
+      "model_id": "test-123",
+      "model_name": "MacBook Pro 16 (M4)",
+      "country": "IN",
+      "deviceCondition": "GOOD",
+      "conditionNotes": "Minor scratches, fully functional, battery 85%"
+    }
+  },
+  "expected_response_structure": {
+    "success": true,
+    "timestamp": "2026-03-07T12:00:00.000000",
+    "processingTimeMs": 2000,
+    "data": {
+      "brand": {"id": "mock", "name": "Apple"},
+      "category": {"id": "mock", "name": "Laptop"},
+      "model": {"id": "test-123", "name": "MacBook Pro 16 (M4)"},
+      "country": "IN",
+      "analysisDescription": "Material recovery estimation...",
+      "materials": ["...array of materials..."],
+      "devicePricing": {
+        "currentMarketPrice": 249990.00,
+        "currency": "INR",
+        "flipkartLink": "https://www.flipkart.com/search?q=...",
+        "flipkartIcon": "https://static-assets-web.flixcart.com/fk-p-linchpin-web/fk-cp-zion/img/flipkart-plus_8d85f4.png",
+        "amazonLink": "https://www.amazon.in/s?k=...",
+        "amazonIcon": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg",
+        "officialLink": "https://www.apple.com/in/",
+        "officialIcon": "https://www.apple.com/favicon.ico"
+      },
+      "recyclingEstimate": {
+        "totalMaterialValue": 19797.00,
+        "suggestedRecyclingPrice": 10888.35,
+        "suggestedBuybackPrice": 137494.50,
+        "conditionImpact": "Device condition 'GOOD' (Fair/Minor Issues - Working with cosmetic wear) results in 55% of material value...",
+        "currency": "INR",
+        "priceBreakdown": "Material value: 19797.00 | Recycling price: 10888.35 (...) | Buyback price: 137494.50 (...) | Recommendation: ..."
+      },
+      "metadata": {
+        "llmModel": "llama-3.3-70b-versatile",
+        "analysisTimestamp": "2026-03-07T12:00:00.000000"
+      }
+    }
+  }
+}

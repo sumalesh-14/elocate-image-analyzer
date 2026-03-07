@@ -175,6 +175,18 @@ Device Information:
         if request.description:
             prompt += f"- Additional Context: {request.description}\n"
         
+        if request.device_condition:
+            condition_desc = {
+                "EXCELLENT": "Pristine/Working - Fully functional, no damage",
+                "GOOD": "Fair/Minor Issues - Working with cosmetic wear",
+                "FAIR": "Broken/Damaged - Powers on but partial functionality",
+                "POOR": "Scrap/Parts - Does not power on, non-functional"
+            }.get(request.device_condition, request.device_condition)
+            prompt += f"- Device Condition: {request.device_condition} ({condition_desc})\n"
+        
+        if request.condition_notes:
+            prompt += f"- Condition Notes: {request.condition_notes}\n"
+        
         prompt += """
 Your task:
 1. Identify ALL recyclable materials in this device (precious metals, base metals, rare earth elements, etc.)
@@ -241,14 +253,14 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
     async def analyze_materials(
         self,
         request: MaterialAnalysisRequest
-    ) -> tuple[List[MaterialData], str, str]:
+    ) -> tuple[List[MaterialData], str, str, float]:
         """Analyze device materials using LLM.
         
         Args:
             request: Material analysis request
             
         Returns:
-            Tuple of (materials list, analysis description, llm model used)
+            Tuple of (materials list, analysis description, llm model used, total material value)
             
         Raises:
             MaterialAnalysisError: If analysis fails
@@ -325,6 +337,12 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
                 "Material recovery estimation based on device specifications"
             )
             
+            # Calculate total material value
+            total_material_value = sum(
+                material.estimated_quantity_grams * material.market_rate_per_gram
+                for material in materials
+            )
+            
             # Log the beautiful results
             log_material_results(
                 start_time,
@@ -333,7 +351,7 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
                 model_used
             )
             
-            return materials, analysis_description, model_used
+            return materials, analysis_description, model_used, total_material_value
             
         except MaterialAnalysisError:
             raise

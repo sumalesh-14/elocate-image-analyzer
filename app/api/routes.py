@@ -106,7 +106,7 @@ async def analyze_device(
             "INVALID_FILE_SIZE": status.HTTP_400_BAD_REQUEST,
             "INVALID_FILE_HEADERS": status.HTTP_400_BAD_REQUEST,
             "MALICIOUS_FILE": status.HTTP_400_BAD_REQUEST,
-            "NOT_A_DEVICE": status.HTTP_400_BAD_REQUEST,
+            "NOT_A_DEVICE": status.HTTP_422_UNPROCESSABLE_ENTITY,
             "MISSING_FILE": status.HTTP_400_BAD_REQUEST,
             "SERVICE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
             "ANALYSIS_TIMEOUT": status.HTTP_504_GATEWAY_TIMEOUT,
@@ -395,6 +395,12 @@ async def analyze_materials(
     except MaterialAnalysisError as e:
         # Handle known material analysis errors
         processing_time = int((time.time() - start_time) * 1000)
+        
+        material_status_code_map = {
+            "NOT_AN_EWASTE_DEVICE": status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "NO_LLM_WORKERS": status.HTTP_503_SERVICE_UNAVAILABLE,
+            "ALL_WORKERS_FAILED": status.HTTP_503_SERVICE_UNAVAILABLE,
+        }
         
         logger.warning(
             f"Material analysis error: {e.error_code}",

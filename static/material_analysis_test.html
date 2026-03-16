@@ -422,9 +422,11 @@
         }
         
         function displayError(error) {
+            const isEwasteError = error.code === 'NOT_AN_EWASTE_DEVICE' || error.code === 'NOT_A_DEVICE';
+            const icon = isEwasteError ? '⚠️' : '✗';
             resultDiv.innerHTML = `
                 <div class="error">
-                    <strong>✗ Error: ${error.code}</strong><br>
+                    <strong>${icon} ${isEwasteError ? 'Invalid Device' : 'Error'}: ${error.code}</strong><br>
                     ${error.message}
                 </div>
             `;

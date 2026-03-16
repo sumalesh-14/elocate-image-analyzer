@@ -139,7 +139,7 @@ class AnalyzerService:
             if not self._is_device(pass1_result):
                 olog.log_error(
                     "DEVICE CHECK", "NOT_A_DEVICE",
-                    "Image does not appear to contain an electronic device"
+                    "The uploaded image does not appear to be an e-waste or electronic device"
                 )
                 logger.warning(
                     "Non-device image detected",
@@ -147,7 +147,7 @@ class AnalyzerService:
                 )
                 raise AnalysisError(
                     "NOT_A_DEVICE",
-                    "Image does not appear to contain an electronic device",
+                    "The uploaded image does not appear to be an e-waste or electronic device. Please upload a clear image of an electronic device such as a smartphone, laptop, tablet, or other electronic equipment.",
                 )
 
             # ------------------------------------------------------------------

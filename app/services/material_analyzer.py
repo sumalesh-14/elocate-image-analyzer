@@ -154,6 +154,119 @@ class MaterialAnalyzerService:
             "All LLM providers failed for material analysis"
         )
     
+    def _check_llm_ewaste_response(self, analysis_description: str, materials: list) -> None:
+        """Check if the LLM response indicates the input is not an e-waste device.
+        
+        The LLM sometimes processes non-electronic inputs and returns materials
+        like PVC, foam, rubber — this catches that case.
+        
+        Args:
+            analysis_description: The LLM's analysis description
+            materials: The list of material dicts from the LLM
+            
+        Raises:
+            MaterialAnalysisError: If the response indicates a non-electronic device
+        """
+        non_ewaste_signals = [
+            "non-electronic", "not an electronic", "no circuit board", "no electronic component",
+            "not applicable", "footwear", "clothing", "apparel", "food", "not e-waste",
+            "no precious metal", "no recyclable electronic",
+        ]
+        
+        desc_lower = analysis_description.lower()
+        for signal in non_ewaste_signals:
+            if signal in desc_lower:
+                log_material_analysis_error(
+                    "NOT_AN_EWASTE_DEVICE",
+                    "The provided item does not appear to be an electronic device"
+                )
+                raise MaterialAnalysisError(
+                    "NOT_AN_EWASTE_DEVICE",
+                    "Material analysis is only available for electronic devices (e-waste). "
+                    "The provided item does not appear to be an electronic device. "
+                    "Please provide a valid electronic device such as a smartphone, laptop, tablet, or other electronic equipment."
+                )
+        
+        # Also check if all materials are non-electronic (PVC, foam, rubber, fabric, etc.)
+        non_electronic_materials = {
+            "pvc", "eva foam", "foam", "rubber", "fabric", "leather", "cotton",
+            "polyester", "nylon", "plastic resin", "silicone rubber",
+        }
+        material_names = [
+            (m.get("materialName") or m.get("material_name") or "").lower()
+            for m in materials
+        ]
+        if material_names and all(
+            any(ne in name for ne in non_electronic_materials)
+            for name in material_names
+            if name
+        ):
+            log_material_analysis_error(
+                "NOT_AN_EWASTE_DEVICE",
+                "No electronic materials found — item does not appear to be an e-waste device"
+            )
+            raise MaterialAnalysisError(
+                "NOT_AN_EWASTE_DEVICE",
+                "Material analysis is only available for electronic devices (e-waste). "
+                "No electronic materials were identified in the provided item. "
+                "Please provide a valid electronic device such as a smartphone, laptop, tablet, or other electronic equipment."
+            )
+
+    def _validate_ewaste_category(self, category_name: str, brand_name: str, model_name: str) -> None:
+        """Validate that the provided category is an electronic/e-waste device.
+        
+        Args:
+            category_name: The device category name
+            brand_name: The brand name
+            model_name: The model name
+            
+        Raises:
+            MaterialAnalysisError: If the input does not represent an e-waste device
+        """
+        # Known non-electronic categories that should be rejected
+        non_ewaste_keywords = {
+            # Footwear / apparel
+            "shoe", "shoes", "slipper", "slippers", "sandal", "sandals", "boot", "boots",
+            "sneaker", "sneakers", "footwear", "clothing", "apparel", "shirt", "pants",
+            "dress", "jacket", "coat", "hat", "cap", "bag", "purse", "wallet",
+            # Food / nature
+            "food", "fruit", "vegetable", "animal", "plant", "flower", "tree",
+            "nature", "landscape", "outdoor",
+            # Furniture / household
+            "furniture", "chair", "table", "sofa", "bed", "desk", "shelf",
+            # Vehicles
+            "car", "vehicle", "bike", "bicycle", "motorcycle", "truck",
+            # Stationery / misc
+            "toy", "book", "paper", "wood", "stone", "rock",
+            # People
+            "human", "person", "face", "body",
+            # Buildings
+            "building", "architecture", "house", "room",
+            # Art / jewelry
+            "art", "painting", "sculpture", "jewelry", "jewellery",
+            # Medical / chemical
+            "medicine", "drug", "chemical",
+            # Weapons / sports
+            "weapon", "gun", "knife", "sport", "ball",
+        }
+        
+        category_lower = category_name.lower().strip()
+        brand_lower = brand_name.lower().strip()
+        model_lower = model_name.lower().strip()
+        
+        for keyword in non_ewaste_keywords:
+            if keyword in category_lower or keyword in brand_lower or keyword in model_lower:
+                log_material_analysis_error(
+                    "NOT_AN_EWASTE_DEVICE",
+                    f"'{category_name}' is not a recognized e-waste or electronic device category"
+                )
+                raise MaterialAnalysisError(
+                    "NOT_AN_EWASTE_DEVICE",
+                    f"Material analysis is only available for electronic devices (e-waste). "
+                    f"'{category_name}' does not appear to be an electronic device category. "
+                    f"Please provide a valid electronic device such as a smartphone, laptop, tablet, or other electronic equipment."
+                )
+
     def _build_analysis_prompt(self, request: MaterialAnalysisRequest) -> str:
         """Build the LLM prompt for material analysis.
         
@@ -274,6 +387,9 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
         )
         
         try:
+            # Validate that the category is an electronic/e-waste device
+            self._validate_ewaste_category(request.category_name, request.brand_name, request.model_name)
+
             # Build the prompt
             prompt = self._build_analysis_prompt(request)
             
@@ -311,6 +427,10 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
                     "NO_MATERIALS_FOUND",
                     "No materials identified in the device"
                 )
+            
+            # Check if LLM itself indicates this is not an electronic device
+            analysis_desc = parsed_data.get("analysisDescription", "")
+            self._check_llm_ewaste_response(analysis_desc, parsed_data["materials"])
             
             # Parse materials
             materials = []

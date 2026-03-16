@@ -325,25 +325,29 @@ def log_material_results(
     if precious:
         _p(f"  {_YELLOW}💰 PRECIOUS METALS:{_RESET}")
         for mat in precious:
-            name = mat.get('materialName') or mat.get('material_name')
+            name = mat.get('materialName') or mat.get('material_name') or 'Unknown'
             qty = mat.get('estimatedQuantityGrams') or mat.get('estimated_quantity_grams')
             rate = mat.get('marketRatePerGram') or mat.get('market_rate_per_gram')
-            curr = mat.get('currency')
+            curr = mat.get('currency') or ''
             found = mat.get('foundIn') or mat.get('found_in') or 'Unknown component'
             _p(f"    {_BOLD}{name}{_RESET}")
-            _p(f"      {_DIM}Quantity:{_RESET} {qty:.3f}g  {_DIM}Rate:{_RESET} {rate:.2f} {curr}/g")
+            qty_str = f"{qty:.3f}g" if qty is not None else "N/A"
+            rate_str = f"{rate:.2f} {curr}/g" if rate is not None else "N/A"
+            _p(f"      {_DIM}Quantity:{_RESET} {qty_str}  {_DIM}Rate:{_RESET} {rate_str}")
             _p(f"      {_DIM}Found in:{_RESET} {found}")
     
     if base:
         _p(f"\n  {_CYAN}🔩 BASE MATERIALS:{_RESET}")
         for mat in base:
-            name = mat.get('materialName') or mat.get('material_name')
+            name = mat.get('materialName') or mat.get('material_name') or 'Unknown'
             qty = mat.get('estimatedQuantityGrams') or mat.get('estimated_quantity_grams')
             rate = mat.get('marketRatePerGram') or mat.get('market_rate_per_gram')
-            curr = mat.get('currency')
+            curr = mat.get('currency') or ''
             found = mat.get('foundIn') or mat.get('found_in') or 'Unknown component'
             _p(f"    {_BOLD}{name}{_RESET}")
-            _p(f"      {_DIM}Quantity:{_RESET} {qty:.3f}g  {_DIM}Rate:{_RESET} {rate:.2f} {curr}/g")
+            qty_str = f"{qty:.3f}g" if qty is not None else "N/A"
+            rate_str = f"{rate:.2f} {curr}/g" if rate is not None else "N/A"
+            _p(f"      {_DIM}Quantity:{_RESET} {qty_str}  {_DIM}Rate:{_RESET} {rate_str}")
             _p(f"      {_DIM}Found in:{_RESET} {found}")
     
     _section("🤖", "ANALYSIS METADATA", _BLUE)

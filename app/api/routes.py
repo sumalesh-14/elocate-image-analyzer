@@ -25,6 +25,7 @@ from app.models.material_analysis import (
     RecyclingEstimate,
     DevicePricing
 )
+from app.models.chat import ChatRequest, ChatResponse, ChatError
 from app.services.analyzer import analyzer_service, AnalysisError
 from app.services.material_analyzer import material_analyzer_service, MaterialAnalysisError
 from app.services.device_pricing import device_pricing_service
@@ -441,3 +442,89 @@ async def analyze_materials(
                 "message": "An unexpected error occurred during material analysis"
             }
         )
+
+@router.post(
+    "/api/v1/chat",
+    response_model=ChatResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Chat with EcoBot",
+    description="Send a message to the EcoBot AI assistant and get a response"
+)
+@limiter.limit("20/minute")
+async def chat_endpoint(
+    request: Request,
+    chat_request: ChatRequest
+) -> ChatResponse:
+    try:
+        if not llm_service.workers:
+            return ChatResponse(success=False, error=ChatError(code="NO_API_KEY", message="No LLM API keys configured"))
+            
+        worker = llm_service.workers[0] # Use primary worker (usually Gemini)
+        
+        # Format the system instruction
+        system_instruction = '''You are EcoBot, the intelligent assistant for ELocate. 
+Your personality is: Organic, Optimistic, Precise, and Helpful.
+
+Your goals:
+1. Guide users on how to recycle specific e-waste items (batteries, phones, laptops).
+2. Explain the environmental impact of e-waste in simple but impactful terms.
+3. Help locate hypothetical nearby facilities (you can invent realistic sounding local centers if asked for "nearby", or ask for their city).
+4. Use formatting like bullet points for clarity.
+5. Keep answers concise but warm. Avoid robotic phrasing.
+
+Design constraints:
+- Use emojis sparingly but effectively (🌿, 🔋, ♻️).
+- If unsure, encourage them to visit a local certified center.'''
+
+        if worker.provider == "gemini":
+            from google.genai import types
+            import asyncio
+            
+            # Map history into Gemini classes
+            contents = []
+            for h in chat_request.history:
+                text_parts = "\n".join([p.text for p in h.parts])
+                contents.append(types.Content(role=h.role, parts=[types.Part.from_text(text=text_parts)]))
+            
+            # Add new message
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=chat_request.message)]))
+            
+            # Run generative content
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: worker.client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction
+                    )
+                )
+            )
+            return ChatResponse(success=True, text=response.text)
+            
+        elif worker.provider == "openai" or worker.provider == "groq":
+            import asyncio
+            
+            messages = [{"role": "system", "content": system_instruction}]
+            for h in chat_request.history:
+                text_parts = "\n".join([p.text for p in h.parts])
+                role = "assistant" if h.role == "model" else "user"
+                messages.append({"role": role, "content": text_parts})
+                
+            messages.append({"role": "user", "content": chat_request.message})
+            
+            response = await worker.client.chat.completions.create(
+                model=worker.text_only_model,
+                messages=messages
+            )
+            
+            return ChatResponse(success=True, text=response.choices[0].message.content)
+
+    except Exception as e:
+        logger.error(f"Chat endpoint error: {str(e)}", exc_info=True)
+        return ChatResponse(
+            success=False, 
+            error=ChatError(code="CHAT_API_ERROR", message=f"Failed to generate response: {str(e)}")
+        )
+

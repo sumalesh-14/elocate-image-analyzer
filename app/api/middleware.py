@@ -51,6 +51,12 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/api/"):
             api_key = request.headers.get("X-API-Key")
             
+            cors_headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
+            }
+
             if not api_key:
                 logger.warning(
                     "Missing API key",
@@ -61,6 +67,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
+                    headers=cors_headers,
                     content={
                         "success": False,
                         "timestamp": time.time(),
@@ -83,6 +90,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 )
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
+                    headers=cors_headers,
                     content={
                         "success": False,
                         "timestamp": time.time(),

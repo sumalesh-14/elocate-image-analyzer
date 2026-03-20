@@ -8,7 +8,7 @@ registers routes, and sets up exception handlers.
 import logging
 from pathlib import Path
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -237,6 +237,20 @@ async def shutdown_event():
         logger.info("Database connection pool closed")
     except Exception as e:
         logger.error(f"Error closing database connection pool: {e}")
+
+
+# Explicit OPTIONS handler to guarantee preflight always succeeds
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    """Handle CORS preflight requests."""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 
 # Root endpoint

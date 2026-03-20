@@ -147,17 +147,14 @@ def configure_cors(app) -> None:
     """
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.allowed_origins_list,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["*"]
     )
     
-    logger.info(
-        "CORS configured",
-        extra={"allowed_origins": settings.allowed_origins_list}
-    )
+    logger.info("CORS configured with allow_origins=*")
 
 
 def configure_rate_limiting(app) -> None:

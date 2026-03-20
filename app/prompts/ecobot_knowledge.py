@@ -18,19 +18,16 @@ The platform has 4 types of users:
 ## CITIZEN PORTAL — HOW TO GET STARTED
 
 ### How to Register / Sign Up
-1. Go to the ELocate website (homepage at `/`)
-2. You will be redirected to `/citizen`
-3. Click the **Sign In** button in the navigation header
-4. On the sign-in page, click **Register** or **Create Account**
-5. Fill in your full name, email address, mobile number, and password
-6. Submit the form — you will be logged in and redirected to the citizen dashboard
+1. Visit the ELocate homepage at `/` — you will be redirected to `/citizen`.
+2. Click the **Sign In** button in the navigation header.
+3. On the sign-in page, click **Register** or **Create Account**.
+4. Fill in your full name, email address, mobile number, and password, then submit.
+5. You will be logged in and redirected to the citizen dashboard.
 
 ### How to Sign In
-1. Go to `/citizen/sign-in`
-2. Enter your registered email and password
-3. Click **Login**
-4. On success, you are redirected to the citizen home page
-5. If you forgot your password, click the **Forgot Password** link on the sign-in page
+1. Go to `/citizen/sign-in` and enter your registered **email address** and **password**.
+2. Click the **Login** button — on success you are redirected to the citizen home page.
+3. If you forgot your password, click the **Forgot Password** link on the sign-in page.
 
 ### Citizen Home Page (`/citizen`)
 The home page has:
@@ -49,16 +46,12 @@ This is the main feature for scheduling e-waste pickup or drop-off.
 **Requires login.** If not signed in, you will be redirected to the sign-in page.
 
 **Steps to book a recycling request:**
-1. Go to **Book Recycle** from the navigation menu
-2. You land on the Book Recycle dashboard showing your collection stats
-3. Click **New Recycle Request** (or go to `/citizen/book-recycle/new`)
-4. Fill in the request form:
-   - Select the device type/category (e.g., Smartphone, Laptop, TV, Refrigerator, Accessories)
-   - Enter device details (brand, model, condition)
-   - Choose pickup or drop-off
-   - Enter your address and preferred date/time
-5. Submit the request
-6. You will receive a confirmation and can track the status
+1. Go to **Book Recycle** from the navigation menu — you land on the Book Recycle dashboard.
+2. Click **New Recycle Request** (or navigate to `/citizen/book-recycle/new`).
+3. Select the device type/category (e.g., Smartphone, Laptop, TV, Refrigerator, Accessories).
+4. Enter device details — brand, model, and condition.
+5. Choose pickup or drop-off, enter your address and preferred date/time, then submit.
+6. You will receive a confirmation and can track the status from **My Requests**.
 
 **View your requests:**
 - Go to `/citizen/book-recycle/requests` or click **My Requests** in the sidebar
@@ -76,22 +69,13 @@ This is the main feature for scheduling e-waste pickup or drop-off.
 An AI-powered tool that tells you the material composition and estimated recycling value of your device.
 
 **Steps to analyze a device:**
-1. Go to **Analyze** from the navigation menu
-2. Select your device **Category** from the dropdown (e.g., Mobile Phone, Laptop, Tablet)
-3. Select the **Brand** (loads automatically based on category)
-4. Select the **Model** (loads automatically based on brand)
-5. If your device is not in the list, toggle **Manual Input** and type the details
-6. Select the **Condition** of your device:
-   - Pristine / Working — fully functional
-   - Fair / Minor Issues — working with cosmetic wear
-   - Broken / Damaged — partially functional
-   - Scrap / Parts — non-functional, for material recovery
-7. Click **Analyze**
-8. The AI will show you:
-   - Material breakdown (precious metals, base materials)
-   - Estimated recoverable value
-   - Environmental impact (CO2 offset, hazardous materials)
-   - Recycling recommendations
+1. Go to **Analyze** from the navigation menu at `/citizen/analyze`.
+2. Select your device **Category** from the dropdown (e.g., Mobile Phone, Laptop, Tablet).
+3. Select the **Brand** — this loads automatically based on the category you chose.
+4. Select the **Model** — this loads automatically based on the brand you chose.
+5. If your device is not in the list, toggle **Manual Input** and type the details.
+6. Select the **Condition** of your device: Pristine/Working, Fair/Minor Issues, Broken/Damaged, or Scrap/Parts.
+7. Click **Analyze** — the AI will show material breakdown, estimated value, and environmental impact.
 
 ---
 
@@ -99,15 +83,9 @@ An AI-powered tool that tells you the material composition and estimated recycli
 Locate certified e-waste recycling centers near you.
 
 **Steps:**
-1. Go to **E-Facilities** from the navigation menu
-2. An interactive map loads showing nearby certified recycling centers
-3. You can search by location or browse the map
-4. Click on any facility marker to see:
-   - Facility name and address
-   - Contact information
-   - Accepted device types
-   - Operating hours
-5. Use this to find the nearest drop-off point for your e-waste
+1. Go to **E-Facilities** from the navigation menu at `/citizen/e-facilities`.
+2. An interactive map loads showing nearby certified recycling centers.
+3. Search by location or browse the map, then click any facility marker to see its name, address, contact info, accepted device types, and operating hours.
 
 ---
 
@@ -151,9 +129,8 @@ Manage your personal account details.
 Reach the ELocate support team.
 
 **Steps:**
-1. Go to **Contact Us** from the footer or navigation
-2. Fill in the contact form with your name, email, and message
-3. Submit — the team will respond to your email
+1. Go to **Contact Us** from the footer or navigation at `/citizen/contactus`.
+2. Fill in the contact form with your name, email, and message, then submit — the team will respond to your email.
 
 ---
 
@@ -172,12 +149,9 @@ Learn about ELocate's mission, team, and vision for sustainable e-waste manageme
 Intermediaries are logistics partners who collect e-waste from citizens and deliver it to recycling facilities.
 
 ### How to become an Intermediary / Partner
-Intermediaries and partners are the same role — certified recycling centers, collection agencies, or logistics companies that handle e-waste on the platform.
-
-1. Contact ELocate through the **Contact Us** page (`/citizen/contactus`)
-2. The admin team reviews your application and approves qualified organizations
-3. Once approved, you receive intermediary login credentials
-4. Sign in at `/intermediary/sign-in` to access your dashboard
+1. Contact ELocate through the **Contact Us** page at `/citizen/contactus`.
+2. The admin team reviews your application and approves qualified organizations.
+3. Once approved, you receive intermediary login credentials and can sign in at `/intermediary/sign-in`.
 
 ### Intermediary Dashboard (`/intermediary/dashboard`)
 After signing in, intermediaries see:

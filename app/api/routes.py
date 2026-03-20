@@ -9,7 +9,10 @@ This module implements:
 
 import time
 import logging
+import re
+import uuid
 from pathlib import Path
+from typing import Dict, List
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, FileResponse
 
@@ -39,6 +42,98 @@ logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter()
+
+# In-memory session store: session_id -> list of ChatMessageHistory dicts
+# Each entry: {"role": "user"|"model", "parts": [{"text": "..."}]}
+_chat_sessions: Dict[str, List[dict]] = {}
+
+
+def _parse_bot_response(raw: str):
+    """Parse RESPONSE:/SUGGESTIONS: format from the LLM output.
+    Returns (text, suggestions_list). Falls back gracefully if format is missing."""
+    text_out = raw
+    suggestions = []
+    if "RESPONSE:" in raw:
+        parts = raw.split("RESPONSE:", 1)[1]
+        if "SUGGESTIONS:" in parts:
+            text_part, sug_part = parts.split("SUGGESTIONS:", 1)
+            text_out = text_part.strip()
+            suggestions = [s.strip() for s in sug_part.strip().split("|") if s.strip()]
+        else:
+            text_out = parts.strip()
+    return text_out, suggestions or None
+
+
+async def _generate_suggestions(user_message: str, bot_reply: str):
+    """
+    Generate 3 contextual follow-up suggestions based on the bot's reply content.
+    Covers both e-waste recycling topics and ELocate platform features.
+    """
+    # Match against the bot reply (what was just explained) for maximum relevance
+    ctx = (bot_reply + " " + user_message).lower()
+
+    # --- ELocate platform flows ---
+    if any(w in ctx for w in ["sign up", "register", "create account", "registration"]):
+        return ["How do I sign in after registering?", "Where can I view my profile?", "How do I book my first recycle request?"]
+    if any(w in ctx for w in ["sign in", "login", "log in", "forgot password", "credentials"]):
+        return ["How do I book a recycle request?", "Where can I see my past requests?", "How do I update my profile?"]
+    if any(w in ctx for w in ["book recycle", "recycle request", "schedule pickup", "pickup", "drop-off", "book-recycle"]):
+        return ["How do I track my recycle request?", "What device types can I recycle?", "Can I cancel a recycle request?"]
+    if any(w in ctx for w in ["track", "status", "my requests", "pending", "in transit", "completed"]):
+        return ["What does 'In Transit' status mean?", "How long does a pickup take?", "How do I contact support about my request?"]
+    if any(w in ctx for w in ["analyze", "material", "composition", "value", "condition", "scrap", "working"]):
+        return ["How do I choose the right condition for my device?", "What does the analysis result show?", "Can I analyze a device not in the list?"]
+    if any(w in ctx for w in ["e-facilities", "facility", "map", "nearby", "recycling center", "drop-off point", "location"]):
+        return ["What items do recycling centers accept?", "How do I find the nearest facility?", "Do recycling centers charge a fee?"]
+    if any(w in ctx for w in ["education", "learn", "rules", "guidelines", "regulation", "law"]):
+        return ["What items are accepted for recycling?", "How do I prepare my device before recycling?", "Why is e-waste recycling important?"]
+    if any(w in ctx for w in ["profile", "account", "impact score", "co2", "edit profile", "settings"]):
+        return ["How do I edit my profile?", "What is the impact score?", "How do I change my password?"]
+    if any(w in ctx for w in ["contact", "support", "help", "reach", "team"]):
+        return ["How do I report an issue with my request?", "Where is the contact form?", "What is ELocate's support email?"]
+    if any(w in ctx for w in ["intermediary", "partner", "become", "apply", "application", "approved", "facility owner"]):
+        return ["What does an intermediary do on ELocate?", "How long does partner approval take?", "What features does the intermediary dashboard have?"]
+    if any(w in ctx for w in ["intermediary dashboard", "collections", "assign driver", "schedule", "clients"]):
+        return ["How do I assign a driver to a pickup?", "Where can I view my collection schedule?", "How do I generate a report?"]
+    if any(w in ctx for w in ["admin", "administrator", "manage", "approve partner", "citizen management"]):
+        return ["How does admin approve a partner?", "What can admins see in the dashboard?", "How does admin manage citizens?"]
+
+    # --- E-waste device topics ---
+    if any(w in ctx for w in ["phone", "mobile", "smartphone", "iphone", "samsung", "android"]):
+        return ["How do I wipe my data before recycling?", "What about the battery inside my phone?", "Where can I drop off my old phone?"]
+    if any(w in ctx for w in ["laptop", "computer", "pc", "macbook", "notebook"]):
+        return ["How do I wipe my hard drive before recycling?", "Can I recycle laptop batteries separately?", "How do I find a laptop recycling center?"]
+    if any(w in ctx for w in ["battery", "batteries", "lithium"]):
+        return ["Can I throw batteries in regular trash?", "What types of batteries are recyclable?", "Where are battery drop-off points?"]
+    if any(w in ctx for w in ["tv", "television", "monitor", "screen", "display", "crt"]):
+        return ["Are old CRT TVs more hazardous than LCDs?", "How do I prepare my TV for recycling?", "Where can I recycle large electronics?"]
+    if any(w in ctx for w in ["environment", "impact", "harmful", "toxic", "hazard", "pollution", "soil", "water"]):
+        return ["Which e-waste items are most toxic?", "How does e-waste affect soil and water?", "What materials are recovered from recycled electronics?"]
+    if any(w in ctx for w in ["data", "wipe", "privacy", "personal", "reset", "factory reset"]):
+        return ["How do I factory reset my phone?", "Is a factory reset enough to protect my data?", "What else should I remove before recycling?"]
+
+    # Generic fallback
+    return ["How do I book a recycle request?", "How do I find a nearby e-waste facility?", "How do I analyze my device?"]
+
+
+# Topics that are clearly off-topic for EcoBot — checked before hitting the LLM
+_OFF_TOPIC_PATTERNS = [
+    r'\bpython\b', r'\bjava\b', r'\bjavascript\b', r'\bc\+\+\b', r'\bruby\b', r'\brust\b',
+    r'\bprogramm', r'\bcoding\b', r'\bcode\b', r'\balgorithm\b', r'\bsort(ing)?\b',
+    r'\bfunction\b', r'\bvariable\b', r'\bloop\b', r'\barray\b', r'\bclass\b',
+    r'\brecipe\b', r'\bcook(ing)?\b', r'\bfood\b', r'\bsport\b', r'\bfootball\b',
+    r'\bmovie\b', r'\bfilm\b', r'\bsong\b', r'\bmusic\b', r'\bjoke\b',
+    r'\bweather\b', r'\bnews\b', r'\bpolitics\b', r'\bmath\b', r'\bcalcul',
+    r'\bhistory\b', r'\bgeograph', r'\bcapital of\b', r'\bwho is\b', r'\bwhat is [a-z]+ programm',
+]
+
+_OFF_TOPIC_REPLY = "🌿 I'm EcoBot, your e-waste recycling assistant. I can only help with topics related to e-waste, recycling electronics, and the ELocate platform. For anything else, please use a general-purpose assistant. ♻️"
+_OFF_TOPIC_SUGGESTIONS = [
+    "How do I recycle my old phone?",
+    "Where can I drop off old batteries?",
+    "What e-waste items are most harmful?",
+    "How does e-waste affect the environment?",
+]
 
 
 @router.post(
@@ -458,73 +553,66 @@ async def chat_endpoint(
     try:
         if not llm_service.workers:
             return ChatResponse(success=False, error=ChatError(code="NO_API_KEY", message="No LLM API keys configured"))
-            
-        worker = llm_service.workers[0] # Use primary worker (usually Gemini)
-        
-        # Format the system instruction
-        system_instruction = '''You are EcoBot, the intelligent assistant for ELocate. 
-Your personality is: Organic, Optimistic, Precise, and Helpful.
 
-Your goals:
-1. Guide users on how to recycle specific e-waste items (batteries, phones, laptops).
-2. Explain the environmental impact of e-waste in simple but impactful terms.
-3. Help locate hypothetical nearby facilities (you can invent realistic sounding local centers if asked for "nearby", or ask for their city).
-4. Use formatting like bullet points for clarity.
-5. Keep answers concise but warm. Avoid robotic phrasing.
+        worker = llm_service.workers[0]  # Use primary worker (usually Gemini)
 
-Design constraints:
-- Use emojis sparingly but effectively (🌿, 🔋, ♻️).
-- If unsure, encourage them to visit a local certified center.'''
+        # --- Session context management ---
+        session_id = chat_request.session_id or str(uuid.uuid4())
+        if session_id not in _chat_sessions:
+            _chat_sessions[session_id] = []
 
-        if worker.provider == "gemini":
-            from google.genai import types
-            import asyncio
-            
-            # Map history into Gemini classes
-            contents = []
-            for h in chat_request.history:
-                text_parts = "\n".join([p.text for p in h.parts])
-                contents.append(types.Content(role=h.role, parts=[types.Part.from_text(text=text_parts)]))
-            
-            # Add new message
-            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=chat_request.message)]))
-            
-            # Run generative content
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: worker.client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction
-                    )
-                )
+        # Prefer server-stored history; fall back to client-sent history for first message
+        stored_history = _chat_sessions[session_id]
+        history_to_use = stored_history if stored_history else chat_request.history
+
+        # --- Logging ---
+        from app.utils.orchestration_log import (
+            log_chat_request, log_chat_off_topic, log_chat_complete, log_chat_error
+        )
+        start_time = log_chat_request(chat_request.message, session_id, bool(history_to_use))
+
+        # --- Off-topic guard: check before hitting the LLM ---
+        msg_lower = chat_request.message.lower()
+        is_off_topic = any(re.search(p, msg_lower) for p in _OFF_TOPIC_PATTERNS)
+        if is_off_topic:
+            log_chat_off_topic(chat_request.message)
+            _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
+            _chat_sessions[session_id].append({"role": "model", "parts": [{"text": _OFF_TOPIC_REPLY}]})
+            return ChatResponse(
+                success=True,
+                text=_OFF_TOPIC_REPLY,
+                session_id=session_id,
+                suggestions=_OFF_TOPIC_SUGGESTIONS
             )
-            return ChatResponse(success=True, text=response.text)
-            
-        elif worker.provider == "openai" or worker.provider == "groq":
-            import asyncio
-            
-            messages = [{"role": "system", "content": system_instruction}]
-            for h in chat_request.history:
-                text_parts = "\n".join([p.text for p in h.parts])
-                role = "assistant" if h.role == "model" else "user"
-                messages.append({"role": role, "content": text_parts})
-                
-            messages.append({"role": "user", "content": chat_request.message})
-            
-            response = await worker.client.chat.completions.create(
-                model=worker.text_only_model,
-                messages=messages
-            )
-            
-            return ChatResponse(success=True, text=response.choices[0].message.content)
+
+        # --- System instruction ---
+        from app.prompts.ecobot_system_prompt import ECOBOT_SYSTEM_PROMPT
+        system_instruction = ECOBOT_SYSTEM_PROMPT
+
+        # --- LLM call with full fallback across all workers ---
+        result = await llm_service.call_chat_with_fallback(
+            messages_by_provider={"history": history_to_use, "user_message": chat_request.message},
+            system_instruction=system_instruction,
+        )
+        reply_text = result["text"]
+        worker_name = result["worker_name"]
+
+        # --- Persist turn ---
+        _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
+        _chat_sessions[session_id].append({"role": "model", "parts": [{"text": reply_text}]})
+
+        # --- Suggestions ---
+        suggestions = await _generate_suggestions(chat_request.message, reply_text)
+
+        log_chat_complete(start_time, worker_name, reply_text)
+        return ChatResponse(success=True, text=reply_text, session_id=session_id, suggestions=suggestions)
 
     except Exception as e:
         logger.error(f"Chat endpoint error: {str(e)}", exc_info=True)
+        from app.utils.orchestration_log import log_chat_error
+        log_chat_error("CHAT_API_ERROR", str(e))
         return ChatResponse(
-            success=False, 
+            success=False,
             error=ChatError(code="CHAT_API_ERROR", message=f"Failed to generate response: {str(e)}")
         )
 

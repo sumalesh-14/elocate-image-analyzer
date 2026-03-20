@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Material Analysis LLM Priority Order
     MATERIAL_ANALYSIS_LLM_PRIORITY: str = "groq,gemini,openai"
     
+    # Chat (EcoBot) LLM Priority Order
+    CHAT_LLM_PRIORITY: str = "groq,gemini,openai"
+    
     # Database Configuration
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
@@ -102,6 +105,11 @@ class Settings(BaseSettings):
             return [key.strip() for key in self.GROQ_API_KEYS.split(",") if key.strip()]
         return []
     
+    @property
+    def chat_llm_priority_list(self) -> List[str]:
+        """Parse CHAT_LLM_PRIORITY into list of provider names."""
+        return [p.strip().lower() for p in self.CHAT_LLM_PRIORITY.split(",") if p.strip()]
+
     @property
     def material_analysis_llm_priority_list(self) -> List[str]:
         """Parse MATERIAL_ANALYSIS_LLM_PRIORITY into list of provider names."""

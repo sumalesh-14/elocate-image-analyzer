@@ -365,3 +365,59 @@ def log_material_analysis_error(error_code: str, message: str) -> None:
     _field("Code", error_code, indent=6)
     _field("Message", message, indent=6)
     _p(f"{_DIM}{'─' * 68}{_RESET}\n")
+
+
+# ---------------------------------------------------------------------------
+# Chat / EcoBot Logging
+# ---------------------------------------------------------------------------
+
+def log_chat_request(message: str, session_id: Optional[str], has_history: bool) -> float:
+    """Print opening banner for a new chat request."""
+    start = time.time()
+    _p(f"\n{_BOLD}{_CYAN}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_CYAN}  💬  NEW ECOBOT CHAT REQUEST{_RESET}")
+    _p(f"{_BOLD}{_CYAN}{'═' * 68}{_RESET}")
+    _field("Message", message[:80] + ("..." if len(message) > 80 else ""))
+    _field("Session ID", session_id or "new")
+    _field("Has history", "yes" if has_history else "no")
+    return start
+
+
+def log_chat_off_topic(message: str) -> None:
+    """Log when a message is blocked as off-topic."""
+    _p(f"\n  {_YELLOW}🚫  OFF-TOPIC BLOCKED (no LLM call){_RESET}")
+    _field("Message", message[:80], indent=6)
+
+
+def log_chat_llm_attempt(llm_name: str) -> None:
+    """Log attempt to use a specific LLM for chat."""
+    _p(f"\n  {_BLUE}🤖  Routing chat to LLM: {_RESET}{_BOLD}{llm_name}{_RESET}")
+
+
+def log_chat_llm_switched(failed_llm: str, reason: str, next_llm: str) -> None:
+    """Log LLM switch due to failure."""
+    _p(f"  {_YELLOW}⚠️   {failed_llm} failed ({reason}). Switching to {next_llm}...{_RESET}")
+
+
+def log_chat_llm_all_failed() -> None:
+    """Log when all LLM workers failed."""
+    _p(f"  {_RED}❌  All LLM workers failed for chat request.{_RESET}")
+
+
+def log_chat_complete(start_time: float, llm_name: str, reply_preview: str) -> None:
+    """Log successful chat completion."""
+    elapsed_ms = int((time.time() - start_time) * 1000)
+    _p(f"\n{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_GREEN}  ✅  ECOBOT RESPONSE READY  ({elapsed_ms} ms){_RESET}")
+    _p(f"{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    _field("LLM used", llm_name)
+    _field("Reply preview", reply_preview[:80] + ("..." if len(reply_preview) > 80 else ""))
+    _p(f"\n{_DIM}{'─' * 68}{_RESET}\n")
+
+
+def log_chat_error(error_code: str, message: str) -> None:
+    """Log chat error."""
+    _p(f"\n{_RED}{_BOLD}❌  ECOBOT CHAT ERROR{_RESET}")
+    _field("Code", error_code, indent=6)
+    _field("Message", message, indent=6)
+    _p(f"{_DIM}{'─' * 68}{_RESET}\n")

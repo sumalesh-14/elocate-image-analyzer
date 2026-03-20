@@ -522,5 +522,114 @@ class LLMRouterService:
         """
         return await self._call_llm_text_only_with_fallback(prompt)
 
+    async def call_chat_with_fallback(
+        self,
+        messages_by_provider: Dict[str, Any],
+        system_instruction: str,
+    ) -> Dict[str, Any]:
+        """
+        Iterate through all workers for chat (text-only, conversational).
+        Falls back to next worker on rate limit or any error.
+
+        Returns:
+            {"text": str, "worker_name": str}
+        """
+        from app.utils.orchestration_log import log_chat_llm_attempt, log_chat_llm_switched, log_chat_llm_all_failed
+
+        if not self.workers:
+            raise LLMAPIError("No active LLM workers available.")
+
+        # Order workers by CHAT_LLM_PRIORITY env setting
+        priority = settings.chat_llm_priority_list
+        provider_map: Dict[str, list] = {}
+        for w in self.workers:
+            provider_map.setdefault(w.provider, []).append(w)
+        ordered = []
+        for p in priority:
+            ordered.extend(provider_map.get(p, []))
+        # Append any workers whose provider wasn't in the priority list
+        for p, ws in provider_map.items():
+            if p not in priority:
+                ordered.extend(ws)
+
+        logger.info(f"Chat LLM priority: {priority} → workers: {[w.display_name for w in ordered]}")
+
+        history = messages_by_provider.get("history", [])
+        user_message = messages_by_provider.get("user_message", "")
+
+        for idx, worker in enumerate(ordered):
+            log_chat_llm_attempt(worker.display_name)
+            try:
+                reply_text = await asyncio.wait_for(
+                    self._chat_with_worker(worker, history, user_message, system_instruction),
+                    timeout=settings.REQUEST_TIMEOUT,
+                )
+                return {"text": reply_text, "worker_name": worker.display_name}
+
+            except Exception as e:
+                error_str = str(e).lower()
+                reason = "Rate Limit" if ("429" in error_str or "quota" in error_str) else (
+                    "Timeout" if "timeout" in error_str else "API Error"
+                )
+                next_worker = ordered[idx + 1] if idx + 1 < len(ordered) else None
+                if next_worker:
+                    log_chat_llm_switched(worker.display_name, reason, next_worker.display_name)
+                else:
+                    log_chat_llm_all_failed()
+
+        raise LLMAPIError("All LLM workers failed for chat.")
+
+    async def _chat_with_worker(
+        self,
+        worker: "LLMWorker",
+        history: list,
+        user_message: str,
+        system_instruction: str,
+    ) -> str:
+        """Send a chat message using a specific worker with full history."""
+        if worker.provider == "gemini":
+            from google.genai import types
+            contents = []
+            for h in history:
+                role = h["role"] if isinstance(h, dict) else h.role
+                parts_list = h["parts"] if isinstance(h, dict) else h.parts
+                text_parts = "\n".join(
+                    p["text"] if isinstance(p, dict) else p.text for p in parts_list
+                )
+                contents.append(types.Content(role=role, parts=[types.Part.from_text(text=text_parts)]))
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
+
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: worker.client.models.generate_content(
+                    model=worker.text_only_model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(system_instruction=system_instruction),
+                )
+            )
+            return response.text
+
+        elif worker.provider in ("openai", "groq"):
+            messages = [{"role": "system", "content": system_instruction}]
+            for h in history:
+                role_raw = h["role"] if isinstance(h, dict) else h.role
+                parts_list = h["parts"] if isinstance(h, dict) else h.parts
+                text_parts = "\n".join(
+                    p["text"] if isinstance(p, dict) else p.text for p in parts_list
+                )
+                messages.append({
+                    "role": "assistant" if role_raw == "model" else "user",
+                    "content": text_parts
+                })
+            messages.append({"role": "user", "content": user_message})
+
+            response = await worker.client.chat.completions.create(
+                model=worker.text_only_model,
+                messages=messages,
+            )
+            return response.choices[0].message.content
+
+        raise ValueError(f"Unknown provider: {worker.provider}")
+
 # Global service instance
 llm_service = LLMRouterService()

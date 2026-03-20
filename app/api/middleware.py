@@ -215,23 +215,21 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
 def configure_middleware(app) -> None:
     """Configure all middleware for the application.
     
-    This function should be called during application startup to set up:
-    - CORS
-    - Rate limiting
-    - API key authentication
-    - Request/response logging
+    Starlette applies add_middleware in reverse order (last added = outermost).
+    So we add APIKeyAuthMiddleware and RequestLoggingMiddleware first, then CORS
+    last so that CORSMiddleware is the outermost layer and always handles preflight.
     
     Args:
         app: FastAPI application instance
     """
-    # Configure CORS (must be first)
-    configure_cors(app)
-    
     # Configure rate limiting
     configure_rate_limiting(app)
     
-    # Add custom middleware
+    # Add custom middleware (these will be inner layers)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(APIKeyAuthMiddleware)
+
+    # Configure CORS last so it wraps everything and handles preflight first
+    configure_cors(app)
     
     logger.info("All middleware configured successfully")

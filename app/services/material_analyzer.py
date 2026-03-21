@@ -361,6 +361,12 @@ IMPORTANT COMPOSITION GUIDELINES:
 - Remember: rates should reflect SCRAP/RECYCLING value, not pure commodity prices
 - Account for recovery efficiency (typically 60-80% of theoretical maximum)
 
+Also estimate the CURRENT SECOND-HAND / USED MARKET PRICE of this specific device model in the given country.
+- This is the realistic resale price a buyer would pay for this device in used condition (not brand new retail price)
+- For India: check typical prices on platforms like OLX, Cashify, Flipkart Second Hand, Amazon Renewed
+- Be accurate — e.g. iPhone 14 128GB used in India is around ₹40,000-55,000 in 2024-2025
+- If the exact model is unknown, estimate based on similar models in the same category/brand/year
+
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks, no additional text):
 {
   "materials": [
@@ -373,6 +379,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
       "foundIn": "Circuit board and connectors"
     }
   ],
+  "estimatedMarketPrice": 48000,
   "analysisDescription": "Brief description of the analysis methodology including recovery efficiency considerations"
 }
 
@@ -383,19 +390,12 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
     async def analyze_materials(
         self,
         request: MaterialAnalysisRequest
-    ) -> tuple[List[MaterialData], str, str, float]:
+    ) -> tuple[List[MaterialData], str, str, float, float | None]:
         """Analyze device materials using LLM.
         
-        Args:
-            request: Material analysis request
-            
         Returns:
-            Tuple of (materials list, analysis description, llm model used, total material value)
-            
-        Raises:
-            MaterialAnalysisError: If analysis fails
+            Tuple of (materials list, analysis description, llm model used, total material value, estimated market price)
         """
-        # Start logging
         start_time = log_material_analysis_start(
             request.brand_name,
             request.model_name,
@@ -404,100 +404,72 @@ Ensure all numeric values are realistic and based on actual e-waste recycling ma
         )
         
         try:
-            # Validate that the category is an electronic/e-waste device
             self._validate_ewaste_category(request.category_name, request.brand_name, request.model_name)
 
-            # Build the prompt
             prompt = self._build_analysis_prompt(request)
-            
-            # Call LLM service using custom priority order for material analysis
             response_data, model_used = await self._call_text_llm_with_priority(prompt)
             
             if not response_data:
                 log_material_analysis_error("LLM_NO_RESPONSE", "LLM did not return a valid response")
-                raise MaterialAnalysisError(
-                    "LLM_NO_RESPONSE",
-                    "LLM did not return a valid response"
-                )
+                raise MaterialAnalysisError("LLM_NO_RESPONSE", "LLM did not return a valid response")
             
-            # The response is already parsed as JSON dict
             parsed_data = response_data
             
-            # Validate response structure
             if "materials" not in parsed_data:
                 log_material_analysis_error("INVALID_LLM_RESPONSE", "LLM response missing 'materials' field")
-                raise MaterialAnalysisError(
-                    "INVALID_LLM_RESPONSE",
-                    "LLM response missing 'materials' field"
-                )
+                raise MaterialAnalysisError("INVALID_LLM_RESPONSE", "LLM response missing 'materials' field")
             
             if not isinstance(parsed_data["materials"], list):
                 log_material_analysis_error("INVALID_LLM_RESPONSE", "'materials' field must be a list")
-                raise MaterialAnalysisError(
-                    "INVALID_LLM_RESPONSE",
-                    "'materials' field must be a list"
-                )
+                raise MaterialAnalysisError("INVALID_LLM_RESPONSE", "'materials' field must be a list")
             
             if not parsed_data["materials"]:
                 log_material_analysis_error("NO_MATERIALS_FOUND", "No materials identified in the device")
-                raise MaterialAnalysisError(
-                    "NO_MATERIALS_FOUND",
-                    "No materials identified in the device"
-                )
+                raise MaterialAnalysisError("NO_MATERIALS_FOUND", "No materials identified in the device")
             
-            # Check if LLM itself indicates this is not an electronic device
             analysis_desc = parsed_data.get("analysisDescription", "")
             self._check_llm_ewaste_response(analysis_desc, parsed_data["materials"])
             
-            # Parse materials
             materials = []
             for material_dict in parsed_data["materials"]:
                 try:
                     material = MaterialData(**material_dict)
                     materials.append(material)
                 except Exception as e:
-                    self.logger.warning(
-                        f"Failed to parse material: {e}",
-                        extra={"material": material_dict}
-                    )
+                    self.logger.warning(f"Failed to parse material: {e}", extra={"material": material_dict})
                     continue
             
             if not materials:
                 log_material_analysis_error("NO_VALID_MATERIALS", "No valid materials could be parsed from LLM response")
-                raise MaterialAnalysisError(
-                    "NO_VALID_MATERIALS",
-                    "No valid materials could be parsed from LLM response"
-                )
+                raise MaterialAnalysisError("NO_VALID_MATERIALS", "No valid materials could be parsed from LLM response")
             
             analysis_description = parsed_data.get(
                 "analysisDescription",
                 "Material recovery estimation based on device specifications"
             )
             
-            # Calculate total material value
             total_material_value = sum(
                 material.estimated_quantity_grams * material.market_rate_per_gram
                 for material in materials
             )
+
+            # Extract LLM-estimated market price (used second-hand price)
+            llm_market_price = parsed_data.get("estimatedMarketPrice")
+            if llm_market_price:
+                try:
+                    llm_market_price = float(llm_market_price)
+                except (TypeError, ValueError):
+                    llm_market_price = None
             
-            # Log the beautiful results
-            log_material_results(
-                start_time,
-                parsed_data["materials"],
-                analysis_description,
-                model_used
-            )
+            log_material_results(start_time, parsed_data["materials"], analysis_description, model_used)
             
-            return materials, analysis_description, model_used, total_material_value
+            return materials, analysis_description, model_used, total_material_value, llm_market_price
             
         except MaterialAnalysisError:
             raise
         except Exception as e:
             log_material_analysis_error("ANALYSIS_FAILED", f"Material analysis failed: {str(e)}")
-            raise MaterialAnalysisError(
-                "ANALYSIS_FAILED",
-                f"Material analysis failed: {str(e)}"
-            )
+            raise MaterialAnalysisError("ANALYSIS_FAILED", f"Material analysis failed: {str(e)}")
 
 
 # Global service instance

@@ -409,13 +409,13 @@ async def analyze_materials(
     
     try:
         # Analyze materials using LLM
-        materials, analysis_description, model_used, total_material_value = await material_analyzer_service.analyze_materials(
+        materials, analysis_description, model_used, total_material_value, llm_market_price = await material_analyzer_service.analyze_materials(
             analysis_request
         )
         
-        # Fetch device pricing (optional, non-blocking)
+        # Fetch device pricing (optional, non-blocking) — for platform links only
         device_pricing = None
-        market_price = None
+        market_price = llm_market_price  # Use LLM-estimated market price
         try:
             device_pricing = await device_pricing_service.get_device_pricing(
                 brand_name=analysis_request.brand_name,
@@ -423,8 +423,9 @@ async def analyze_materials(
                 category_name=analysis_request.category_name,
                 country=analysis_request.country
             )
-            if device_pricing and device_pricing.current_market_price:
-                market_price = device_pricing.current_market_price
+            # Prefer live price if available, otherwise keep LLM estimate
+            if device_pricing and device_pricing.currentMarketPrice:
+                market_price = device_pricing.currentMarketPrice
         except Exception as e:
             logger.warning(f"Failed to fetch device pricing: {str(e)}")
         

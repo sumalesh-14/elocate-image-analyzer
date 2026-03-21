@@ -186,8 +186,7 @@ class PricingCalculator:
                 )
                 estimated = True
             if not market_price:
-                return None
-        
+                return None        
         # Get multiplier based on condition
         multiplier = self.BUYBACK_MULTIPLIERS.get(device_condition)
         

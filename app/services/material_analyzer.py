@@ -253,7 +253,24 @@ class MaterialAnalyzerService:
         category_lower = category_name.lower().strip()
         brand_lower = brand_name.lower().strip()
         model_lower = model_name.lower().strip()
-        
+
+        # Known valid e-waste categories — skip validation entirely for these
+        ewaste_categories = {
+            "smartphone", "mobile phone", "phone", "laptop", "notebook", "tablet",
+            "television", "tv", "monitor", "display", "desktop", "computer", "pc",
+            "printer", "scanner", "camera", "dslr", "mirrorless", "camcorder",
+            "smartwatch", "wearable", "headphone", "earphone", "speaker",
+            "router", "modem", "networking", "ups", "inverter", "power supply",
+            "set-top box", "set top box", "stb", "gaming console", "console",
+            "refrigerator", "washing machine", "air conditioner", "microwave",
+            "small appliance", "iron", "mixer", "grinder", "vacuum cleaner",
+            "projector", "hard drive", "ssd", "storage", "keyboard", "mouse",
+            "server", "workstation",
+        }
+
+        if any(cat in category_lower for cat in ewaste_categories):
+            return  # Valid e-waste category, skip further checks
+
         for keyword in non_ewaste_keywords:
             if keyword in category_lower or keyword in brand_lower or keyword in model_lower:
                 log_material_analysis_error(

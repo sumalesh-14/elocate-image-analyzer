@@ -87,11 +87,78 @@ class PricingCalculator:
         
         return recycling_price, impact_explanation
     
+    # Estimated market price multipliers from material value (when no live price available)
+    # Based on typical retail-to-scrap ratios for device categories
+    # Kept conservative — material value from LLM can vary, so we cap output too
+    MATERIAL_TO_MARKET_MULTIPLIERS = {
+        "smartphone": 12,
+        "mobile phone": 12,
+        "phone": 12,
+        "laptop": 10,
+        "notebook": 10,
+        "tablet": 9,
+        "television": 7,
+        "tv": 7,
+        "monitor": 6,
+        "display": 6,
+        "smartwatch": 8,
+        "wearable": 8,
+        "camera": 9,
+        "gaming console": 7,
+        "console": 7,
+        "default": 8,
+    }
+
+    # Max estimated market price caps per category (INR) to prevent inflated estimates
+    MARKET_PRICE_CAPS = {
+        "smartphone": 80000,
+        "mobile phone": 80000,
+        "phone": 80000,
+        "laptop": 120000,
+        "notebook": 120000,
+        "tablet": 60000,
+        "television": 80000,
+        "tv": 80000,
+        "monitor": 40000,
+        "display": 40000,
+        "smartwatch": 30000,
+        "wearable": 30000,
+        "camera": 60000,
+        "gaming console": 50000,
+        "console": 50000,
+        "default": 50000,
+    }
+
+    def _estimate_market_price(
+        self,
+        total_material_value: float,
+        category_name: str,
+        device_condition: Optional[str] = None
+    ) -> Optional[float]:
+        """Estimate market price from material value when no live price is available."""
+        if device_condition == "POOR":
+            return None
+
+        category_lower = (category_name or "").lower().strip()
+
+        multiplier = self.MATERIAL_TO_MARKET_MULTIPLIERS.get("default", 8)
+        cap = self.MARKET_PRICE_CAPS.get("default", 50000)
+        for key in self.MATERIAL_TO_MARKET_MULTIPLIERS:
+            if key in category_lower:
+                multiplier = self.MATERIAL_TO_MARKET_MULTIPLIERS[key]
+                cap = self.MARKET_PRICE_CAPS.get(key, cap)
+                break
+
+        estimated = total_material_value * multiplier
+        return min(estimated, cap)
+
     def calculate_buyback_price(
         self,
         market_price: Optional[float],
         device_condition: Optional[str] = None,
-        device_age_years: Optional[float] = None
+        device_age_years: Optional[float] = None,
+        total_material_value: Optional[float] = None,
+        category_name: Optional[str] = None
     ) -> Optional[Tuple[float, str]]:
         """
         Calculate suggested buyback price for functional devices.
@@ -100,12 +167,26 @@ class PricingCalculator:
             market_price: Current market price of the device
             device_condition: Device condition code (EXCELLENT, GOOD, FAIR, POOR)
             device_age_years: Age of device in years (for depreciation)
+            total_material_value: Used to estimate market price if not provided
+            category_name: Device category for estimation multiplier
             
         Returns:
             Tuple of (buyback_price, explanation) or None if not applicable
         """
-        if not market_price:
+        # POOR condition — no buyback
+        if device_condition == "POOR":
             return None
+
+        # Fall back to estimated market price if live price unavailable
+        estimated = False
+        if not market_price:
+            if total_material_value and category_name:
+                market_price = self._estimate_market_price(
+                    total_material_value, category_name, device_condition
+                )
+                estimated = True
+            if not market_price:
+                return None
         
         # Get multiplier based on condition
         multiplier = self.BUYBACK_MULTIPLIERS.get(device_condition)
@@ -129,9 +210,11 @@ class PricingCalculator:
         # Build explanation
         condition_desc = self.CONDITION_DESCRIPTIONS.get(device_condition, "Unspecified condition")
         explanation = (
-            f"Buyback price is {int(multiplier * 100)}% of market price "
+            f"Buyback price is {int(multiplier * 100)}% of {'estimated ' if estimated else ''}market price "
             f"for '{device_condition}' condition ({condition_desc})."
         )
+        if estimated:
+            explanation += " (Market price estimated from material composition — live price unavailable.)"
         
         if device_age_years:
             age_depreciation_pct = int(min(0.08 * device_age_years, 0.40) * 100)
@@ -144,7 +227,8 @@ class PricingCalculator:
         total_material_value: float,
         market_price: Optional[float],
         device_condition: Optional[str],
-        device_age_years: Optional[float] = None
+        device_age_years: Optional[float] = None,
+        category_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get comprehensive pricing recommendation.
@@ -168,7 +252,9 @@ class PricingCalculator:
         buyback_result = self.calculate_buyback_price(
             market_price,
             device_condition,
-            device_age_years
+            device_age_years,
+            total_material_value=total_material_value,
+            category_name=category_name
         )
         
         buyback_price = None

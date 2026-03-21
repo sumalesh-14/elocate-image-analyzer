@@ -436,7 +436,8 @@ async def analyze_materials(
             total_material_value=total_material_value,
             market_price=market_price,
             device_condition=analysis_request.device_condition,
-            device_age_years=None  # TODO: Calculate from model release date if available
+            device_age_years=None,  # TODO: Calculate from model release date if available
+            category_name=analysis_request.category_name
         )
         
         # Calculate processing time

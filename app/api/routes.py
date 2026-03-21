@@ -250,6 +250,11 @@ async def analyze_device(
         # Handle unexpected errors
         processing_time = int((time.time() - start_time) * 1000)
         
+        import traceback
+        print(f"\n\033[91m❌  UNEXPECTED ERROR IN ANALYZE ENDPOINT\033[0m")
+        print(f"    {type(e).__name__}: {e}")
+        traceback.print_exc()
+        
         logger.error(
             "Unexpected error during analysis",
             extra={

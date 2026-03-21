@@ -89,7 +89,6 @@ class DeviceData(BaseModel):
     # Model identification uncertainty
     model_uncertainty_reason: Optional[str] = Field(
         None,
-        max_length=200,
         description="Explanation of why model identification was difficult (if uncertain)"
     )
     

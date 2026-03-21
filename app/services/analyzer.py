@@ -316,9 +316,9 @@ class AnalyzerService:
                 pass2_result, resolved_category, device_type
             )
             
-            # Add model uncertainty reason if available
+            # Add model uncertainty reason if available (truncate to avoid field length issues)
             if model_uncertainty_reason:
-                enhanced_fields["model_uncertainty_reason"] = model_uncertainty_reason
+                enhanced_fields["model_uncertainty_reason"] = model_uncertainty_reason[:300]
 
             db_status = database_matcher._determine_status(
                 category_match, brand_match, model_match, brand_pick, model_pick

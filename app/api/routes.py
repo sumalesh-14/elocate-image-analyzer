@@ -16,8 +16,8 @@ from typing import Dict, List
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, FileResponse
 
-from app.models.response import IdentificationResponse, ErrorData, HealthResponse, DeviceData
-from app.models.material_analysis import (
+from ..models.response import IdentificationResponse, ErrorData, HealthResponse, DeviceData
+from ..models.material_analysis import (
     MaterialAnalysisRequest,
     MaterialAnalysisResponse,
     MaterialAnalysisData,
@@ -28,13 +28,27 @@ from app.models.material_analysis import (
     RecyclingEstimate,
     DevicePricing
 )
-from app.models.chat import ChatRequest, ChatResponse, ChatError
-from app.services.analyzer import analyzer_service, AnalysisError
-from app.services.material_analyzer import material_analyzer_service, MaterialAnalysisError
-from app.services.device_pricing import device_pricing_service
-from app.services.pricing_calculator import pricing_calculator
-from app.services.llm_router import llm_service
-from app.api.middleware import limiter
+from ..models.chat import ChatRequest, ChatResponse, ChatError
+from ..services.analyzer import analyzer_service, AnalysisError
+from ..services.material_analyzer import material_analyzer_service, MaterialAnalysisError
+from ..services.device_pricing import device_pricing_service
+from ..services.pricing_calculator import pricing_calculator
+from ..services.llm_router import llm_service
+from .middleware import limiter
+from ..prompts.ecobot_system_prompt import ECOBOT_SYSTEM_PROMPT
+from ..prompts.intermediary_system_prompt import INTERMEDIARY_SYSTEM_PROMPT
+from ..services.live_query_service import detect_intent, run_live_query, classify_message, run_live_query_from_classification
+from ..utils.orchestration_log import (
+    log_chat_request, 
+    log_chat_off_topic, 
+    log_chat_error,
+    log_chat_complete,
+    log_material_analysis_start,
+    log_llm_chat_request,
+    log_llm_chat_response,
+    log_classifier_skipped,
+)
+from ..services.db_connection import db_manager
 
 
 # Configure logger
@@ -64,15 +78,45 @@ def _parse_bot_response(raw: str):
     return text_out, suggestions or None
 
 
-async def _generate_suggestions(user_message: str, bot_reply: str):
+async def _generate_suggestions(user_message: str, bot_reply: str, role: str = "citizen"):
     """
     Generate 3 contextual follow-up suggestions based on the bot's reply content.
-    Covers both e-waste recycling topics and ELocate platform features.
+    Branches on role: 'intermediary' gets ops/compliance suggestions, others get citizen suggestions.
     """
-    # Match against the bot reply (what was just explained) for maximum relevance
     ctx = (bot_reply + " " + user_message).lower()
 
-    # --- ELocate platform flows ---
+    # ------------------------------------------------------------------ #
+    # INTERMEDIARY suggestions
+    # ------------------------------------------------------------------ #
+    if role == "intermediary":
+        if any(w in ctx for w in ["form-2", "annual return", "annual filing", "financial year"]):
+            return ["When is the Form-2 filing deadline?", "How do I export Form-2 from E-Locate?", "What fields are required in Form-2?"]
+        if any(w in ctx for w in ["form-6", "quarterly return", "quarter", "q1", "q2", "q3", "q4"]):
+            return ["What are the Form-6 quarterly deadlines?", "How do I export Form-6 from E-Locate?", "What data does Form-6 require?"]
+        if any(w in ctx for w in ["cpcb", "compliance", "epr", "extended producer", "registration", "spcb", "license"]):
+            return ["What are the CPCB filing deadlines?", "How do I export a compliance report?", "What are EPR target obligations?"]
+        if any(w in ctx for w in ["assign", "driver", "vehicle", "two-wheeler", "three-wheeler", "truck", "route"]):
+            return ["Which vehicle type suits large appliances?", "How do I bulk-assign drivers?", "How do I check driver availability?"]
+        if any(w in ctx for w in ["schedule", "calendar", "reschedule", "workload", "conflict"]):
+            return ["How do I reschedule a pickup?", "How do I balance driver workload?", "Where do I see scheduling conflicts?"]
+        if any(w in ctx for w in ["collection", "pending", "in transit", "completed", "cancel", "status"]):
+            return ["How do I filter collections by status?", "How do I handle a cancelled pickup?", "How do I export collection data?"]
+        if any(w in ctx for w in ["report", "volume", "financials", "performance", "export", "csv", "pdf"]):
+            return ["How do I export a volume report?", "What does the driver performance report show?", "How do I download a financials report?"]
+        if any(w in ctx for w in ["transaction", "withdrawal", "payment", "balance", "payout", "bank"]):
+            return ["What is the minimum withdrawal amount?", "How long do withdrawals take?", "Where do I view transaction history?"]
+        if any(w in ctx for w in ["dashboard", "overview", "kpi", "completion rate", "recycled items"]):
+            return ["What does the completion rate metric mean?", "How do I navigate to Collections from the dashboard?", "How do I view recent activity details?"]
+        if any(w in ctx for w in ["settings", "profile", "password", "notification", "facility", "contact"]):
+            return ["How do I update my facility address?", "How do I change notification preferences?", "Where do I find my CPCB registration number?"]
+        if any(w in ctx for w in ["client", "citizen", "directory", "history", "contact"]):
+            return ["How do I search for a specific client?", "Can I view a client's full recycling history?", "How do I filter clients by location?"]
+        # Intermediary generic fallback
+        return ["How do I assign a driver to a pending request?", "How do I export a CPCB compliance report?", "What are the Form-6 quarterly deadlines?"]
+
+    # ------------------------------------------------------------------ #
+    # CITIZEN suggestions (unchanged)
+    # ------------------------------------------------------------------ #
     if any(w in ctx for w in ["sign up", "register", "create account", "registration"]):
         return ["How do I sign in after registering?", "Where can I view my profile?", "How do I book my first recycle request?"]
     if any(w in ctx for w in ["sign in", "login", "log in", "forgot password", "credentials"]):
@@ -93,12 +137,8 @@ async def _generate_suggestions(user_message: str, bot_reply: str):
         return ["How do I report an issue with my request?", "Where is the contact form?", "What is ELocate's support email?"]
     if any(w in ctx for w in ["intermediary", "partner", "become", "apply", "application", "approved", "facility owner"]):
         return ["What does an intermediary do on ELocate?", "How long does partner approval take?", "What features does the intermediary dashboard have?"]
-    if any(w in ctx for w in ["intermediary dashboard", "collections", "assign driver", "schedule", "clients"]):
-        return ["How do I assign a driver to a pickup?", "Where can I view my collection schedule?", "How do I generate a report?"]
     if any(w in ctx for w in ["admin", "administrator", "manage", "approve partner", "citizen management"]):
         return ["How does admin approve a partner?", "What can admins see in the dashboard?", "How does admin manage citizens?"]
-
-    # --- E-waste device topics ---
     if any(w in ctx for w in ["phone", "mobile", "smartphone", "iphone", "samsung", "android"]):
         return ["How do I wipe my data before recycling?", "What about the battery inside my phone?", "Where can I drop off my old phone?"]
     if any(w in ctx for w in ["laptop", "computer", "pc", "macbook", "notebook"]):
@@ -112,7 +152,6 @@ async def _generate_suggestions(user_message: str, bot_reply: str):
     if any(w in ctx for w in ["data", "wipe", "privacy", "personal", "reset", "factory reset"]):
         return ["How do I factory reset my phone?", "Is a factory reset enough to protect my data?", "What else should I remove before recycling?"]
 
-    # Generic fallback
     return ["How do I book a recycle request?", "How do I find a nearby e-waste facility?", "How do I analyze my device?"]
 
 
@@ -133,6 +172,28 @@ _OFF_TOPIC_SUGGESTIONS = [
     "Where can I drop off old batteries?",
     "What e-waste items are most harmful?",
     "How does e-waste affect the environment?",
+]
+
+# Off-topic patterns for the intermediary bot — broader than citizen since managers
+# should not use this as a general-purpose assistant either
+_INTERMEDIARY_OFF_TOPIC_PATTERNS = [
+    r'\bpython\b', r'\bjava\b', r'\bjavascript\b', r'\bc\+\+\b',
+    r'\bprogramm', r'\bcoding\b', r'\balgorithm\b',
+    r'\brecipe\b', r'\bcook(ing)?\b', r'\bfood\b',
+    r'\bsport\b', r'\bfootball\b', r'\bcricket\b',
+    r'\bmovie\b', r'\bfilm\b', r'\bsong\b', r'\bmusic\b', r'\bjoke\b',
+    r'\bweather\b', r'\bnews\b', r'\bpolitics\b',
+    r'\bmath\b', r'\bcalcul',
+    r'\bgeograph',
+    r'\bwho is\b', r'\bwhat is [a-z]+ programm',
+]
+
+_INTERMEDIARY_OFF_TOPIC_REPLY = "⚠️ I'm the Ops Co-Pilot for E-Locate facility managers. I can only assist with platform operations, CPCB compliance, and e-waste logistics. For other topics, please use a general-purpose assistant."
+_INTERMEDIARY_OFF_TOPIC_SUGGESTIONS = [
+    "How do I export Form-6 quarterly return?",
+    "How do I assign a driver to a pending request?",
+    "What are the CPCB filing deadlines?",
+    "How do I generate a compliance report?",
 ]
 
 
@@ -292,7 +353,6 @@ async def health_check() -> HealthResponse:
         llm_available = await llm_service.check_availability()
         
         # Check database availability
-        from app.services.db_connection import db_manager
         database_available = await db_manager.health_check()
         
         # Determine overall status
@@ -445,8 +505,10 @@ async def analyze_materials(
         processing_time = int((time.time() - start_time) * 1000)
         
         # Build recycling estimate with condition-based pricing
+        # Using manual rounding to satisfy strict linter overloads
+        total_value_rounded = float(int(total_material_value * 100)) / 100.0
         recycling_estimate = RecyclingEstimate(
-            totalMaterialValue=round(total_material_value, 2),
+            totalMaterialValue=total_value_rounded,
             suggestedRecyclingPrice=pricing_recommendation["recycling_price"],
             suggestedBuybackPrice=pricing_recommendation["buyback_price"],
             conditionImpact=pricing_recommendation["condition_impact"],
@@ -572,51 +634,115 @@ async def chat_endpoint(
         stored_history = _chat_sessions[session_id]
         history_to_use = stored_history if stored_history else chat_request.history
 
-        # --- Logging ---
-        from app.utils.orchestration_log import (
-            log_chat_request, log_chat_off_topic, log_chat_complete, log_chat_error
-        )
+        # Log request start with session tracking
         start_time = log_chat_request(chat_request.message, session_id, bool(history_to_use))
-
+        
         # --- Off-topic guard: check before hitting the LLM ---
         msg_lower = chat_request.message.lower()
-        is_off_topic = any(re.search(p, msg_lower) for p in _OFF_TOPIC_PATTERNS)
-        if is_off_topic:
-            log_chat_off_topic(chat_request.message)
-            _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
-            _chat_sessions[session_id].append({"role": "model", "parts": [{"text": _OFF_TOPIC_REPLY}]})
-            return ChatResponse(
-                success=True,
-                text=_OFF_TOPIC_REPLY,
-                session_id=session_id,
-                suggestions=_OFF_TOPIC_SUGGESTIONS
-            )
+        if chat_request.role == "intermediary":
+            is_off_topic = any(re.search(p, msg_lower) for p in _INTERMEDIARY_OFF_TOPIC_PATTERNS)
+            if is_off_topic:
+                log_chat_off_topic(chat_request.message)
+                _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
+                _chat_sessions[session_id].append({"role": "model", "parts": [{"text": _INTERMEDIARY_OFF_TOPIC_REPLY}]})
+                return ChatResponse(
+                    success=True,
+                    text=_INTERMEDIARY_OFF_TOPIC_REPLY,
+                    session_id=session_id,
+                    suggestions=_INTERMEDIARY_OFF_TOPIC_SUGGESTIONS
+                )
+        else:
+            is_off_topic = any(re.search(p, msg_lower) for p in _OFF_TOPIC_PATTERNS)
+            if is_off_topic:
+                log_chat_off_topic(chat_request.message)
+                _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
+                _chat_sessions[session_id].append({"role": "model", "parts": [{"text": _OFF_TOPIC_REPLY}]})
+                return ChatResponse(
+                    success=True,
+                    text=_OFF_TOPIC_REPLY,
+                    session_id=session_id,
+                    suggestions=_OFF_TOPIC_SUGGESTIONS
+                )
 
         # --- System instruction ---
-        from app.prompts.ecobot_system_prompt import ECOBOT_SYSTEM_PROMPT
-        system_instruction = ECOBOT_SYSTEM_PROMPT
+        if chat_request.role == "intermediary":
+            system_instruction = INTERMEDIARY_SYSTEM_PROMPT
+        else:
+            system_instruction = ECOBOT_SYSTEM_PROMPT
+
+        # --- Live DB query intercept (intermediary only) ---
+        # Fast-path: request IDs are unambiguous — skip classifier
+        if chat_request.role == "intermediary":
+            msg = chat_request.message
+            fast_intent = None
+            import re as _re
+            if _re.search(r'\b(r?cy[-\s]?\d{4}[-\s]?\d+|req[-\s]?\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', msg, _re.IGNORECASE):
+                if _re.search(r'(history|timeline|log|trail|activity|track|progress|journey|what happened)', msg, _re.IGNORECASE):
+                    log_classifier_skipped("request history detected in message")
+                    fast_intent = "request_history"
+                else:
+                    log_classifier_skipped("request ID detected in message")
+                    fast_intent = "request_by_id"
+
+            if fast_intent:
+                live_result = await run_live_query(
+                    fast_intent, msg,
+                    facility_id=chat_request.facility_id,
+                    user_id=chat_request.user_id,
+                )
+            else:
+                # LLM classifier decides: DB query or advisory
+                classified = await classify_message(msg, role="intermediary")
+                if classified.get("is_query") and classified.get("intent"):
+                    live_result = await run_live_query_from_classification(
+                        classified, msg,
+                        facility_id=chat_request.facility_id,
+                        user_id=chat_request.user_id,
+                    )
+                else:
+                    live_result = None  # advisory — fall through to LLM chat
+
+            if live_result:
+                _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
+                _chat_sessions[session_id].append({"role": "model", "parts": [{"text": live_result}]})
+                suggestions = await _generate_suggestions(chat_request.message, live_result, "intermediary")
+                return ChatResponse(success=True, text=live_result, session_id=session_id, suggestions=suggestions)
 
         # --- LLM call with full fallback across all workers ---
+        log_llm_chat_request(
+            system_prompt_preview=system_instruction[:200],
+            user_message=chat_request.message,
+            history_turns=len(history_to_use),
+            worker_name=llm_service.workers[0].display_name if llm_service.workers else "unknown",
+            role=chat_request.role or "citizen",
+            facility_id=chat_request.facility_id,
+            user_id=chat_request.user_id,
+        )
+        llm_start = time.time()
         result = await llm_service.call_chat_with_fallback(
             messages_by_provider={"history": history_to_use, "user_message": chat_request.message},
             system_instruction=system_instruction,
         )
         reply_text = result["text"]
         worker_name = result["worker_name"]
+        log_llm_chat_response(
+            worker_name=worker_name,
+            reply_text=reply_text,
+            elapsed_ms=int((time.time() - llm_start) * 1000),
+        )
 
         # --- Persist turn ---
         _chat_sessions[session_id].append({"role": "user", "parts": [{"text": chat_request.message}]})
         _chat_sessions[session_id].append({"role": "model", "parts": [{"text": reply_text}]})
 
         # --- Suggestions ---
-        suggestions = await _generate_suggestions(chat_request.message, reply_text)
+        suggestions = await _generate_suggestions(chat_request.message, reply_text, chat_request.role or "citizen")
 
         log_chat_complete(start_time, worker_name, reply_text)
         return ChatResponse(success=True, text=reply_text, session_id=session_id, suggestions=suggestions)
 
     except Exception as e:
         logger.error(f"Chat endpoint error: {str(e)}", exc_info=True)
-        from app.utils.orchestration_log import log_chat_error
         log_chat_error("CHAT_API_ERROR", str(e))
         return ChatResponse(
             success=False,

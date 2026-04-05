@@ -12,6 +12,9 @@ class ChatRequest(BaseModel):
     message: str
     history: List[ChatMessageHistory] = Field(default_factory=list)
     session_id: Optional[str] = None
+    role: Optional[str] = None
+    facility_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 class ChatError(BaseModel):
     code: str
@@ -21,5 +24,5 @@ class ChatResponse(BaseModel):
     success: bool
     text: Optional[str] = None
     session_id: Optional[str] = None
-    suggestions: Optional[List[str]] = None  # Clickable follow-up questions
+    suggestions: Optional[List[str]] = None
     error: Optional[ChatError] = None

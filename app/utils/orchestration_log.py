@@ -421,3 +421,188 @@ def log_chat_error(error_code: str, message: str) -> None:
     _field("Code", error_code, indent=6)
     _field("Message", message, indent=6)
     _p(f"{_DIM}{'─' * 68}{_RESET}\n")
+
+
+# ---------------------------------------------------------------------------
+# LLM Request / Response Logging (Chat)
+# ---------------------------------------------------------------------------
+
+def log_llm_chat_request(
+    system_prompt_preview: str,
+    user_message: str,
+    history_turns: int,
+    worker_name: str,
+    role: str,
+    facility_id: str = None,
+    user_id: str = None,
+) -> None:
+    """Log the full LLM request payload before sending."""
+    _p(f"\n{_BOLD}{_BLUE}{'─' * 68}{_RESET}")
+    _p(f"{_BOLD}{_BLUE}  📤  LLM REQUEST  →  {worker_name}{_RESET}")
+    _p(f"{_BOLD}{_BLUE}{'─' * 68}{_RESET}")
+    _field("Role", role)
+    _field("Facility ID", facility_id or "N/A")
+    _field("User ID", user_id or "N/A")
+    _field("History turns", history_turns)
+    _field("System prompt", system_prompt_preview[:120] + ("..." if len(system_prompt_preview) > 120 else ""))
+    _field("User message", user_message[:120] + ("..." if len(user_message) > 120 else ""))
+
+
+def log_llm_chat_response(
+    worker_name: str,
+    reply_text: str,
+    elapsed_ms: int,
+) -> None:
+    """Log the LLM response after receiving it."""
+    _p(f"\n{_BOLD}{_GREEN}{'─' * 68}{_RESET}")
+    _p(f"{_BOLD}{_GREEN}  📥  LLM RESPONSE  ←  {worker_name}  ({elapsed_ms} ms){_RESET}")
+    _p(f"{_BOLD}{_GREEN}{'─' * 68}{_RESET}")
+    # Print full reply in chunks so long responses are readable
+    preview = reply_text.strip()
+    if len(preview) <= 300:
+        _field("Reply", preview)
+    else:
+        _field("Reply (first 300)", preview[:300] + "...")
+        _field("Total length", f"{len(preview)} chars")
+    _p(f"{_DIM}{'─' * 68}{_RESET}")
+
+
+# ---------------------------------------------------------------------------
+# Advanced Query Logging (LLM-powered natural language → SQL)
+# ---------------------------------------------------------------------------
+
+def log_advanced_query_start(message: str, facility_id: str = None, user_id: str = None) -> float:
+    """Opening banner for an advanced natural-language query."""
+    start = time.time()
+    _p(f"\n{_BOLD}{_CYAN}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_CYAN}  🔍  ADVANCED QUERY — NATURAL LANGUAGE → SQL{_RESET}")
+    _p(f"{_BOLD}{_CYAN}{'═' * 68}{_RESET}")
+    _field("User message", message[:100] + ("..." if len(message) > 100 else ""))
+    _field("Facility ID", facility_id or "NOT PROVIDED")
+    _field("User ID", user_id or "N/A")
+    return start
+
+
+def log_advanced_step(step_num: int, title: str) -> None:
+    """Log a numbered step in the advanced query pipeline."""
+    _p(f"\n{_BOLD}{_BLUE}  STEP {step_num} — {title}{_RESET}")
+    _p(f"  {_DIM}{'─' * 60}{_RESET}")
+
+
+def log_llm_intent_request(prompt_preview: str, worker_name: str = "LLM") -> float:
+    """Log before sending intent extraction prompt to LLM."""
+    start = time.time()
+    _p(f"\n  {_BLUE}📤  SENDING TO {worker_name}:{_RESET}")
+    _p(f"    {_DIM}Prompt preview:{_RESET} {_WHITE}{prompt_preview[:120]}...{_RESET}")
+    return start
+
+
+def log_llm_intent_response(result: dict, elapsed_ms: int, worker_name: str = "LLM") -> None:
+    """Log the raw LLM JSON response for intent extraction."""
+    _p(f"\n  {_GREEN}📥  {worker_name} RESPONSE  ({elapsed_ms} ms):{_RESET}")
+    for k, v in result.items():
+        _p(f"    {_DIM}{k:<28}{_RESET}{_WHITE}{v}{_RESET}")
+
+
+def log_llm_intent_error(error: str) -> None:
+    _p(f"\n  {_RED}❌  LLM INTENT EXTRACTION FAILED:{_RESET} {error}")
+    _p(f"  {_YELLOW}⚠️   Falling back to regex extractor{_RESET}")
+
+
+def log_model_resolution_start(search_term: str) -> None:
+    _p(f"\n  {_CYAN}🔎  MODEL RESOLUTION:{_RESET} searching for '{_WHITE}{search_term}{_RESET}'")
+
+
+def log_model_candidates(candidates: list) -> None:
+    _p(f"  {_DIM}Found {len(candidates)} candidate(s) in DB:{_RESET}")
+    for c in candidates[:10]:
+        _p(f"    {_DIM}•{_RESET} {c.get('brand_name', '')} {c.get('model_name', '')}  {_DIM}[{c.get('model_id', '')[:8]}...]{_RESET}")
+    if len(candidates) > 10:
+        _p(f"    {_DIM}... and {len(candidates) - 10} more{_RESET}")
+
+
+def log_model_llm_pick(picked: dict, elapsed_ms: int) -> None:
+    if picked.get("model_id"):
+        _p(f"\n  {_GREEN}✅  LLM PICKED MODEL  ({elapsed_ms} ms):{_RESET}")
+        _p(f"    {_DIM}Brand:{_RESET}  {_WHITE}{picked.get('brand_name')}{_RESET}")
+        _p(f"    {_DIM}Model:{_RESET}  {_WHITE}{picked.get('model_name')}{_RESET}")
+        _p(f"    {_DIM}ID:{_RESET}     {_WHITE}{picked.get('model_id')}{_RESET}")
+    else:
+        _p(f"\n  {_YELLOW}⚠️   LLM returned no match — using all {len(picked)} candidates{_RESET}")
+
+
+def log_model_resolution_none(search_term: str) -> None:
+    _p(f"\n  {_RED}❌  NO MODEL FOUND:{_RESET} '{search_term}' not in database")
+
+
+def log_dynamic_sql(conditions: list, params: list, sql: str) -> None:
+    """Log the dynamically built SQL with its WHERE conditions."""
+    _p(f"\n  {_CYAN}🔧  DYNAMIC SQL BUILT:{_RESET}")
+    _p(f"    {_DIM}WHERE conditions ({len(conditions)}):{_RESET}")
+    for c in conditions:
+        _p(f"      {_DIM}•{_RESET} {_WHITE}{c}{_RESET}")
+    _p(f"\n  {_CYAN}📌  BOUND PARAMS:{_RESET}")
+    for i, p in enumerate(params, 1):
+        _p(f"    {_DIM}${i} ={_RESET} {_WHITE}{p}{_RESET}")
+    _p(f"\n  {_CYAN}📋  FULL SQL:{_RESET}")
+    for line in sql.strip().splitlines():
+        _p(f"    {_DIM}{line}{_RESET}")
+
+
+def log_advanced_query_complete(start: float, row_count: int, label: str) -> None:
+    elapsed = int((time.time() - start) * 1000)
+    _p(f"\n{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_GREEN}  ✅  ADVANCED QUERY COMPLETE  ({elapsed} ms){_RESET}")
+    _p(f"{_BOLD}{_GREEN}{'═' * 68}{_RESET}")
+    _field("Label", label)
+    _field("Rows returned", row_count)
+    _p(f"{_DIM}{'─' * 68}{_RESET}\n")
+
+
+def log_advanced_query_no_results(label: str) -> None:
+    _p(f"\n  {_YELLOW}⚠️   NO RESULTS:{_RESET} {label}")
+    _divider()
+
+
+# ---------------------------------------------------------------------------
+# LLM Classifier Logging (is_query vs advisory flow)
+# ---------------------------------------------------------------------------
+
+def log_classifier_start(message: str, role: str) -> float:
+    """Opening banner when the LLM classifier is invoked."""
+    start = time.time()
+    _p(f"\n{_BOLD}{_MAGENTA}{'═' * 68}{_RESET}")
+    _p(f"{_BOLD}{_MAGENTA}  🤖  LLM CLASSIFIER — QUERY vs ADVISORY{_RESET}")
+    _p(f"{_BOLD}{_MAGENTA}{'═' * 68}{_RESET}")
+    _field("Role", role)
+    _field("Message", message[:100] + ("..." if len(message) > 100 else ""))
+    return start
+
+
+def log_classifier_result(result: dict, elapsed_ms: int) -> None:
+    """Log the classifier's JSON decision."""
+    is_query = result.get("is_query", False)
+    intent   = result.get("intent", "—")
+    label    = result.get("label", "—")
+    icon = f"{_GREEN}✅  IS_QUERY = TRUE{_RESET}" if is_query else f"{_YELLOW}💬  IS_QUERY = FALSE → advisory flow{_RESET}"
+    _p(f"\n  {icon}  ({elapsed_ms} ms)")
+    _p(f"    {_DIM}{'intent':<22}{_RESET}{_WHITE}{intent}{_RESET}")
+    _p(f"    {_DIM}{'label':<22}{_RESET}{_WHITE}{label}{_RESET}")
+    # Print all filter fields
+    for k, v in result.items():
+        if k not in ("is_query", "intent", "label") and v:
+            _p(f"    {_DIM}{k:<22}{_RESET}{_WHITE}{v}{_RESET}")
+    _divider()
+
+
+def log_classifier_fallback(reason: str) -> None:
+    """Log when classifier fails and regex fallback is used."""
+    _p(f"\n  {_YELLOW}⚠️   CLASSIFIER FAILED — using regex fallback{_RESET}")
+    _p(f"    {_DIM}Reason:{_RESET} {reason}")
+    _divider()
+
+
+def log_classifier_skipped(reason: str) -> None:
+    """Log when classifier is skipped (e.g. request_by_id detected by fast regex)."""
+    _p(f"\n  {_CYAN}⚡  FAST-PATH DETECTED:{_RESET} {reason} — skipping classifier")
+    _divider()

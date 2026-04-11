@@ -204,7 +204,6 @@ _INTERMEDIARY_OFF_TOPIC_SUGGESTIONS = [
     summary="Analyze device image",
     description="Upload a device image for identification and analysis"
 )
-@limiter.limit("10/minute")
 async def analyze_device(
     request: Request,
     file: UploadFile = File(..., description="Device image file (JPEG, PNG, or WebP, max 10MB)")

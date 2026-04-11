@@ -70,8 +70,17 @@ TASK:
 1. BRAND: Pick the brand from the list above, or return "NEW: <brand>" if not in the list.
    Return null if the brand is not visible in the image.
 
-2. MODEL: Pick the model from the models list above, or return "NEW: <model>" if not found.
-   Return null if not clearly visible.
+2. MODEL: Examine the image carefully and identify the model using visual features.
+   - For iPhones, the camera module shape is the most reliable differentiator:
+     * PILL/CAPSULE shaped elongated housing with 2 vertical lenses = iPhone 16 / 16 Plus
+     * Two SEPARATE CIRCULAR lens bumps (not in a pill) + Dynamic Island + USB-C = iPhone 15 / 15 Plus
+     * Two SEPARATE CIRCULAR lens bumps + NOTCH + Lightning = iPhone 14 / 14 Plus
+     * DIAGONAL dual-camera in square bump + notch = iPhone 13 / 13 mini
+     * THREE lenses + large square bump + LiDAR + Dynamic Island + USB-C = iPhone 15 Pro or 16 Pro
+     * THREE lenses + large square bump + LiDAR + Dynamic Island + Lightning = iPhone 14 Pro
+     * Camera Control button (extra thin button on right side) = iPhone 16 series ONLY
+   - Pick the model from the models list above, or return "NEW: <model>" if not found.
+   - Return null only if the model is genuinely not determinable.
 
 3. Fill in all other fields accurately from the image.
 
@@ -115,27 +124,32 @@ Return ONLY the JSON object, nothing else.
 # ---------------------------------------------------------------------------
 
 PASS3_MODEL_PROMPT_TEMPLATE = """
-You are identifying the exact model of a {brand} {category} for an e-waste recycling system.
+You are a visual device identification expert analyzing an image for an e-waste recycling system.
 
-PREVIOUS ANALYSIS identified the model as: "{pass2_model}"
+Your job: identify the exact model of the {brand} {category} shown in the image.
 
 AVAILABLE MODELS for {brand} {category} (from our database):
 {model_list}
 
-TASK:
-- If "{pass2_model}" (or the visually identifiable model) EXACTLY matches or is a close variation of a name in the list above, return that exact name from the list.
-- If the model is clearly identifiable (visually or from context) but NOT in the list, return "NEW: <model name>".
-- Only return null if you cannot reasonably identify the model at all.
-- If you return a NEW model, list down all recycle items that a recycling facility would consider (e.g., gold, silver, lithium battery, copper). Estimate the grams, market price in Indian Rupees, and whether it is precious.
+INSTRUCTIONS:
+1. Look at the image carefully and identify the device model based on its visual appearance.
+2. Use your knowledge of {brand} product design history — camera layout, port types, frame design, front cutout style, button placement, and any visible text or markings.
+3. A previous analysis suggested "{pass2_model}" — treat this as a low-weight hint only. Trust your visual analysis over it.
+4. If the model matches one in the AVAILABLE MODELS list, return that exact name.
+5. If you can clearly identify the model but it is NOT in the list, return "NEW: <model name>".
+6. Only return null if the model is genuinely impossible to determine from the image.
 
 Return ONLY valid JSON – no markdown fences:
 {{
   "model": "<exact model from list, OR NEW: <name>, OR null>",
+  "confidence": "<high|medium|low>",
+  "uncertainty_reason": "<brief reason if confidence is not high, else null>",
+  "visual_evidence": "<what specific visual features led to this identification>",
   "recycle_items": [
     {{
       "type": "<material name, e.g., gold>",
       "grams": <number>,
-      "market_price": "<estimated price, e.g., 10 in Indian rupees>",
+      "market_price": "<estimated price in Indian Rupees>",
       "is_precious": <boolean>
     }}
   ]
